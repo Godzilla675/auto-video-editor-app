@@ -7,6 +7,7 @@ mock_moviepy = MagicMock()
 mock_moviepy_editor = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
+sys.modules["moviepy.config"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
 sys.modules["openai"] = MagicMock()
