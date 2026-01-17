@@ -1,0 +1,8 @@
+openai-whisper
+moviepy
+openai
+requests
+pytest
+Pillow
+numpy
+opencv-python-headless
