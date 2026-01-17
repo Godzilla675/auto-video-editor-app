@@ -1,0 +1,67 @@
+name: Automated Video Editor
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'URL of the video to edit'
+        required: true
+  push:
+    paths:
+      - '**.mp4'
+
+permissions:
+  contents: read
+
+jobs:
+  edit-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg imagemagick
+          # Fix ImageMagick policy to allow text rendering
+          # This is often restricted by default in Ubuntu
+          if [ -f /etc/ImageMagick-6/policy.xml ]; then
+             sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+          fi
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Video Editor
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Running from URL: ${{ inputs.video_url }}"
+            python -m src.main --url "${{ inputs.video_url }}" --output final_video.mp4
+          else
+            echo "Running from Push event"
+            # Find the uploaded mp4 file (naive approach, ignores result of previous runs)
+            VIDEO_FILE=$(find . -name "*.mp4" -not -name "final_video.mp4" | head -n 1)
+            if [ -z "$VIDEO_FILE" ]; then
+              echo "No video file found in push."
+              exit 0
+            fi
+            echo "Processing $VIDEO_FILE"
+            python -m src.main --video "$VIDEO_FILE" --output final_video.mp4
+          fi
+
+      - name: Upload Final Video
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-video
+          path: final_video.mp4
