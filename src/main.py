@@ -3,6 +3,7 @@ import os
 import requests
 import json
 import shutil
+import concurrent.futures
 from typing import Optional, Dict, Any
 
 from src.transcriber import Transcriber
@@ -94,12 +95,23 @@ def main() -> None:
     print("\n--- Step 3: Graphics Generation ---")
     graphic_paths: Dict[int, str] = {}
     graphics_reqs = analysis_data.get("graphics", [])
-    for i, req in enumerate(graphics_reqs):
-        prompt = req.get("prompt")
-        if prompt:
-            path = generator.generate(prompt, filename_prefix=f"graphic_{i}")
-            if path:
-                graphic_paths[i] = path
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_index = {}
+        for i, req in enumerate(graphics_reqs):
+            prompt = req.get("prompt")
+            if prompt:
+                future = executor.submit(generator.generate, prompt, filename_prefix=f"graphic_{i}")
+                future_to_index[future] = i
+
+        for future in concurrent.futures.as_completed(future_to_index):
+            i = future_to_index[future]
+            try:
+                path = future.result()
+                if path:
+                    graphic_paths[i] = path
+            except Exception as e:
+                print(f"Error generating graphic {i}: {e}")
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
