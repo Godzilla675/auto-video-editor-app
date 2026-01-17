@@ -3,22 +3,48 @@ import cv2
 import base64
 import json
 import math
-from openai import OpenAI
+from typing import List, Dict, Any, Optional, Union
+from openai import OpenAI, APIError
 
 class Analyzer:
-    def __init__(self, api_key, base_url="https://godzilla865-cliproxy-api.hf.space/v1", model="gemini-3-pro-preview"):
+    """
+    A class to analyze video content and transcription using a Large Language Model (Gemini 3 Pro).
+    """
+
+    def __init__(self, api_key: str, base_url: str = "https://godzilla865-cliproxy-api.hf.space/v1", model: str = "gemini-3-pro-preview") -> None:
+        """
+        Initialize the Analyzer.
+
+        Args:
+            api_key (str): The API key for the LLM service.
+            base_url (str): The base URL for the LLM API.
+            model (str): The model identifier to use.
+        """
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model = model
 
-    def _extract_frames(self, video_path, num_frames=10):
+    def _extract_frames(self, video_path: str, num_frames: int = 10) -> List[str]:
         """
         Extracts a fixed number of frames from the video, evenly spaced.
-        Returns a list of base64 encoded strings.
+
+        Args:
+            video_path (str): The path to the video file.
+            num_frames (int): The number of frames to extract.
+
+        Returns:
+            List[str]: A list of base64 encoded strings representing the extracted frames.
+
+        Raises:
+            FileNotFoundError: If the video file is not found.
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+             print(f"Error: Could not open video {video_path}")
+             return []
+
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if total_frames == 0:
             cap.release()
@@ -50,9 +76,17 @@ class Analyzer:
         cap.release()
         return frames_base64
 
-    def analyze(self, video_path, transcription):
+    def analyze(self, video_path: str, transcription: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Analyzes the video and transcription to generate editing instructions.
+
+        Args:
+            video_path (str): Path to the video file.
+            transcription (Dict[str, Any]): Transcription data containing text and segments.
+
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary containing analysis results (segments, captions, graphics, transitions),
+                                      or None if analysis fails.
         """
         frames = self._extract_frames(video_path)
         
@@ -73,7 +107,7 @@ class Analyzer:
         For "graphics", only suggest them when the speaker is explaining a visual concept that is not shown in the video.
         """
 
-        user_content = []
+        user_content: List[Dict[str, Any]] = []
         user_content.append({"type": "text", "text": f"Here is the transcription of the video:\n{json.dumps(transcription)}"})
         user_content.append({"type": "text", "text": "Here are some frames from the video to help you understand the visual context:"})
         
@@ -86,26 +120,45 @@ class Analyzer:
             })
 
         print("Sending request to Gemini...")
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=2000
-        )
-        
-        result_text = response.choices[0].message.content
         try:
-            return json.loads(result_text)
-        except json.JSONDecodeError:
-            print("Failed to parse JSON response. Raw response:")
-            print(result_text)
-            # Fallback: try to extract JSON from markdown block if present
-            if "```json" in result_text:
-                try:
-                    return json.loads(result_text.split("```json")[1].split("```")[0])
-                except:
-                    pass
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=2000
+            )
+            
+            result_text = response.choices[0].message.content
+            if not result_text:
+                print("Error: Empty response from API.")
+                return None
+
+            try:
+                return json.loads(result_text)
+            except json.JSONDecodeError:
+                print("Failed to parse JSON response. Raw response:")
+                print(result_text)
+                # Fallback: try to extract JSON from markdown block if present
+                if "```json" in result_text:
+                    try:
+                        return json.loads(result_text.split("```json")[1].split("```")[0])
+                    except Exception as e:
+                        print(f"Fallback JSON extraction failed: {e}")
+                        pass
+                elif "```" in result_text:
+                     try:
+                        return json.loads(result_text.split("```")[1])
+                     except Exception as e:
+                         print(f"Fallback JSON extraction (no lang) failed: {e}")
+                         pass
+                return None
+
+        except APIError as e:
+            print(f"OpenAI API Error: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error during analysis: {e}")
             return None
