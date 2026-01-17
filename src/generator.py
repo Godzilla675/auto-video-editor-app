@@ -43,7 +43,7 @@ class Generator:
         for i in range(max_retries):
             try:
                 response = requests.post(self.api_url, headers=self.headers, json=payload)
-                
+
                 if response.status_code == 200:
                     try:
                         image_bytes = response.content
