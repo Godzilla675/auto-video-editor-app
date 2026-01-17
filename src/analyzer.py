@@ -130,7 +130,7 @@ class Analyzer:
                 response_format={"type": "json_object"},
                 max_tokens=2000
             )
-            
+
             result_text = response.choices[0].message.content
             if not result_text:
                 print("Error: Empty response from API.")

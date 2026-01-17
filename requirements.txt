@@ -1,5 +1,5 @@
 openai-whisper
-moviepy>=2.0.0
+moviepy<2.0
 openai
 requests
 pytest

@@ -1,4 +1,4 @@
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
 import os
 from typing import Dict, Any, List, Optional
 

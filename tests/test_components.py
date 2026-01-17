@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, Mock
 # Mock heavy dependencies globally before importing src
 # We need to set up specific mocks for classes we use
 mock_moviepy = MagicMock()
+mock_moviepy_editor = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
-# For backward compatibility if any internal modules are imported
-sys.modules["moviepy.editor"] = MagicMock()
+sys.modules["moviepy.editor"] = mock_moviepy_editor
 
 sys.modules["whisper"] = MagicMock()
 sys.modules["openai"] = MagicMock()
@@ -42,7 +42,7 @@ class TestComponents(unittest.TestCase):
 
         self.mock_openai = sys.modules["openai"]
         self.mock_requests = sys.modules["requests"]
-        self.mock_moviepy = sys.modules["moviepy"]
+        self.mock_moviepy_editor = sys.modules["moviepy.editor"]
         self.mock_whisper = sys.modules["whisper"]
         self.mock_pil = sys.modules["PIL"]
 
@@ -129,17 +129,17 @@ class TestComponents(unittest.TestCase):
         mock_clip.w = 100
         mock_clip.h = 100
         mock_clip.subclip.return_value = mock_clip # subclip returns itself
-        self.mock_moviepy.VideoFileClip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
 
         # Mock TextClip
-        self.mock_moviepy.TextClip.return_value = MagicMock()
+        self.mock_moviepy_editor.TextClip.return_value = MagicMock()
         # Mock ImageClip
-        self.mock_moviepy.ImageClip.return_value = MagicMock()
+        self.mock_moviepy_editor.ImageClip.return_value = MagicMock()
         # Mock CompositeVideoClip
-        self.mock_moviepy.CompositeVideoClip.return_value = MagicMock()
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
         # Mock concatenate_videoclips
         mock_final = MagicMock()
-        self.mock_moviepy.concatenate_videoclips.return_value = mock_final
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
 
         editor = Editor()
         analysis_data = {
