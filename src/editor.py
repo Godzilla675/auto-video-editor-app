@@ -1,12 +1,32 @@
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
 import os
+from typing import Dict, Any, List, Optional
 
 class Editor:
-    def __init__(self):
+    """
+    A class to handle video editing operations using MoviePy.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize the Editor.
+        """
         # Configuration for ImageMagick can be done via environment variables
         pass
 
-    def edit(self, video_path, analysis_data, graphic_paths, output_path="output.mp4"):
+    def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4") -> Optional[str]:
+        """
+        Edits the video based on the analysis data and generated graphics.
+
+        Args:
+            video_path (str): Path to the source video.
+            analysis_data (Dict[str, Any]): Analysis results containing segments, captions, etc.
+            graphic_paths (Dict[int, str]): A dictionary mapping graphic indices to file paths.
+            output_path (str): Path to save the final video. Defaults to "output.mp4".
+
+        Returns:
+            Optional[str]: The path to the output video, or None if editing fails.
+        """
         print(f"Editing video: {video_path}")
         try:
             video = VideoFileClip(video_path)
@@ -25,8 +45,8 @@ class Editor:
         segments.sort(key=lambda x: x["start"])
         
         for seg in segments:
-            start = seg.get("start", 0)
-            end = seg.get("end", video.duration)
+            start = float(seg.get("start", 0))
+            end = float(seg.get("end", video.duration))
             
             # Clamp timestamps
             start = max(0, start)
@@ -41,16 +61,15 @@ class Editor:
             layers = [sub]
             
             # --- Graphics (Overlay) ---
-            # graphic_paths is a dict {index: filepath} mapping to the index in analysis_data['graphics']
             graphics_reqs = analysis_data.get("graphics", [])
             for i, graphic_req in enumerate(graphics_reqs):
-                g_time = graphic_req.get("timestamp", 0)
+                g_time = float(graphic_req.get("timestamp", 0))
                 
                 # Check if graphic start point is within this segment
                 if start <= g_time < end:
                     img_path = graphic_paths.get(i)
                     if img_path and os.path.exists(img_path):
-                        duration = graphic_req.get("duration", 3.0)
+                        duration = float(graphic_req.get("duration", 3.0))
                         
                         rel_start = g_time - start
                         # Ensure it doesn't exceed segment
@@ -72,8 +91,8 @@ class Editor:
             # --- Captions ---
             captions = analysis_data.get("captions", [])
             for cap in captions:
-                c_start = cap.get("start", 0)
-                c_end = cap.get("end", 0)
+                c_start = float(cap.get("start", 0))
+                c_end = float(cap.get("end", 0))
                 text = cap.get("text", "")
                 
                 if not text:
@@ -98,7 +117,9 @@ class Editor:
                                          .set_position(('center', 'bottom')))
                             layers.append(text_clip)
                         except Exception as e:
-                            print(f"Failed to create TextClip (ImageMagick issue?): {e}")
+                            print(f"Failed to create TextClip. This is often due to ImageMagick configuration.")
+                            print(f"Details: {e}")
+                            print("Tip: Check if 'policy.xml' allows read/write for PDF/Text if on Linux.")
 
             if len(layers) > 1:
                 combined = CompositeVideoClip(layers)
