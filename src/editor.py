@@ -44,6 +44,9 @@ class Editor:
         # Sort segments by start time to ensure order
         segments.sort(key=lambda x: x["start"])
         
+        graphics_reqs = analysis_data.get("graphics", [])
+        captions = analysis_data.get("captions", [])
+
         for seg in segments:
             start = float(seg.get("start", 0))
             end = float(seg.get("end", video.duration))
@@ -61,7 +64,6 @@ class Editor:
             layers = [sub]
             
             # --- Graphics (Overlay) ---
-            graphics_reqs = analysis_data.get("graphics", [])
             for i, graphic_req in enumerate(graphics_reqs):
                 g_time = float(graphic_req.get("timestamp", 0))
                 
@@ -89,7 +91,6 @@ class Editor:
                             print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
-            captions = analysis_data.get("captions", [])
             for cap in captions:
                 c_start = float(cap.get("start", 0))
                 c_end = float(cap.get("end", 0))
