@@ -1,4 +1,5 @@
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
+import moviepy.config as mp_config
 import os
 import bisect
 from typing import Dict, Any, List, Optional
@@ -13,7 +14,9 @@ class Editor:
         Initialize the Editor.
         """
         # Configuration for ImageMagick can be done via environment variables
-        pass
+        im_binary = os.environ.get("IMAGEMAGICK_BINARY")
+        if im_binary:
+            mp_config.change_settings({"IMAGEMAGICK_BINARY": im_binary})
 
     def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4") -> Optional[str]:
         """
