@@ -59,6 +59,9 @@ class Editor:
         # Extract timestamps for bisect
         g_timestamps = [x[0] for x in sorted_graphics]
         
+        graphics_reqs = analysis_data.get("graphics", [])
+        captions = analysis_data.get("captions", [])
+
         for seg in segments:
             start = float(seg.get("start", 0))
             end = float(seg.get("end", video.duration))
@@ -105,7 +108,6 @@ class Editor:
                         print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
-            captions = analysis_data.get("captions", [])
             for cap in captions:
                 c_start = float(cap.get("start", 0))
                 c_end = float(cap.get("end", 0))
