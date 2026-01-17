@@ -1,5 +1,6 @@
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
 import os
+import bisect
 from typing import Dict, Any, List, Optional
 
 class Editor:
@@ -43,6 +44,20 @@ class Editor:
         
         # Sort segments by start time to ensure order
         segments.sort(key=lambda x: x["start"])
+
+        # --- Pre-process Graphics ---
+        # Optimize graphics lookup by sorting and using bisect (O(M log M) + O(N log M)) instead of O(N * M)
+        graphics_reqs = analysis_data.get("graphics", [])
+        # Store as (timestamp, original_index, graphic_req)
+        sorted_graphics = []
+        for i, req in enumerate(graphics_reqs):
+            t = float(req.get("timestamp", 0))
+            sorted_graphics.append((t, i, req))
+
+        # Sort by timestamp
+        sorted_graphics.sort(key=lambda x: x[0])
+        # Extract timestamps for bisect
+        g_timestamps = [x[0] for x in sorted_graphics]
         
         graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
@@ -64,31 +79,33 @@ class Editor:
             layers = [sub]
             
             # --- Graphics (Overlay) ---
-            for i, graphic_req in enumerate(graphics_reqs):
-                g_time = float(graphic_req.get("timestamp", 0))
+            # Find relevant graphics using binary search
+            idx_start = bisect.bisect_left(g_timestamps, start)
+            idx_end = bisect.bisect_left(g_timestamps, end)
+
+            for g_time, i, graphic_req in sorted_graphics[idx_start:idx_end]:
+                # g_time is already guaranteed to be >= start and < end by bisect logic
                 
-                # Check if graphic start point is within this segment
-                if start <= g_time < end:
-                    img_path = graphic_paths.get(i)
-                    if img_path and os.path.exists(img_path):
-                        duration = float(graphic_req.get("duration", 3.0))
-                        
-                        rel_start = g_time - start
-                        # Ensure it doesn't exceed segment
-                        if rel_start + duration > (end - start):
-                            duration = (end - start) - rel_start
-                        
-                        print(f"Adding graphic {img_path} at relative {rel_start}s")
-                        
-                        try:
-                            img_clip = (ImageClip(img_path)
-                                        .set_start(rel_start)
-                                        .set_duration(duration)
-                                        .set_position("center")
-                                        .resize(height=sub.h * 0.8)) # Resize to 80% of height
-                            layers.append(img_clip)
-                        except Exception as e:
-                            print(f"Failed to create ImageClip: {e}")
+                img_path = graphic_paths.get(i)
+                if img_path and os.path.exists(img_path):
+                    duration = float(graphic_req.get("duration", 3.0))
+
+                    rel_start = g_time - start
+                    # Ensure it doesn't exceed segment
+                    if rel_start + duration > (end - start):
+                        duration = (end - start) - rel_start
+
+                    print(f"Adding graphic {img_path} at relative {rel_start}s")
+
+                    try:
+                        img_clip = (ImageClip(img_path)
+                                    .set_start(rel_start)
+                                    .set_duration(duration)
+                                    .set_position("center")
+                                    .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                        layers.append(img_clip)
+                    except Exception as e:
+                        print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
             for cap in captions:
