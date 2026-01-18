@@ -1,5 +1,8 @@
 import sys
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
+import os
+import unittest
+import json
 
 # Mock heavy dependencies globally before importing src
 # We need to set up specific mocks for classes we use
@@ -15,11 +18,6 @@ sys.modules["cv2"] = MagicMock()
 sys.modules["PIL"] = MagicMock()
 sys.modules["requests"] = MagicMock()
 sys.modules["numpy"] = MagicMock()
-
-import unittest
-import os
-import json
-from unittest.mock import patch
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -46,6 +44,13 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor = sys.modules["moviepy.editor"]
         self.mock_whisper = sys.modules["whisper"]
         self.mock_pil = sys.modules["PIL"]
+
+        # Setup specific mocks for editor features
+        self.mock_moviepy_editor.VideoFileClip.return_value = MagicMock()
+        self.mock_moviepy_editor.AudioFileClip.return_value = MagicMock()
+        self.mock_moviepy_editor.CompositeAudioClip.return_value = MagicMock()
+        self.mock_moviepy_editor.afx = MagicMock()
+        self.mock_moviepy_editor.vfx = MagicMock()
 
     def test_transcriber(self):
         print("Testing Transcriber (Mocked)...")
@@ -140,6 +145,9 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
         # Mock concatenate_videoclips
         mock_final = MagicMock()
+        mock_final.w = 100
+        mock_final.h = 100
+        mock_final.duration = 10.0
         self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
 
         editor = Editor()
@@ -154,6 +162,69 @@ class TestComponents(unittest.TestCase):
             output = editor.edit("dummy.mp4", analysis_data, graphic_paths)
             self.assertEqual(output, "output.mp4")
             mock_final.write_videofile.assert_called()
+
+    def test_editor_enhanced(self):
+        print("Testing Editor Enhanced Features (Mocked)...")
+
+        # Mock VideoFileClip
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        # FX chain
+        mock_clip.fx.return_value = mock_clip
+
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_final = MagicMock()
+        mock_final.w = 100
+        mock_final.h = 100
+        mock_final.duration = 10.0
+        # FX chain for final
+        mock_final.set_audio.return_value = mock_final
+
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Mock Audio
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.volumex.return_value = mock_audio
+        mock_audio.subclip.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+        self.mock_moviepy_editor.afx.audio_loop.return_value = mock_audio
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}, {"start": 6, "end": 10}], # 2 segments to test transition
+        }
+
+        with patch('os.path.exists', return_value=True):
+            output = editor.edit(
+                "dummy.mp4",
+                analysis_data,
+                {},
+                background_music="music.mp3",
+                intro_path="intro.mp4",
+                outro_path="outro.mp4",
+                transition_duration=1.0
+            )
+
+            self.assertEqual(output, "output.mp4")
+            # Verify music loaded
+            self.mock_moviepy_editor.AudioFileClip.assert_called_with("music.mp3")
+            # Verify intro loaded
+            self.mock_moviepy_editor.VideoFileClip.assert_any_call("intro.mp4")
+            # Verify outro loaded
+            self.mock_moviepy_editor.VideoFileClip.assert_any_call("outro.mp4")
+            # Verify transition fx called
+            # clips[0].fx(vfx.fadeout, 1.0)
+            # clips[-1].fx(vfx.fadein, 1.0)
+            # clips in between fadein and fadeout
+            # We have 2 segments -> 2 clips.
+            # Clip 0: fadeout. Clip 1: fadein.
+            # Check if fx was called
+            self.assertTrue(mock_clip.fx.called)
 
 if __name__ == '__main__':
     unittest.main()
