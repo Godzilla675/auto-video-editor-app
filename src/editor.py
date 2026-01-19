@@ -1,4 +1,4 @@
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, AudioFileClip, CompositeAudioClip, afx
 import moviepy.config as mp_config
 import os
 import bisect
@@ -18,7 +18,17 @@ class Editor:
         if im_binary:
             mp_config.change_settings({"IMAGEMAGICK_BINARY": im_binary})
 
-    def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4") -> Optional[str]:
+    def edit(self,
+             video_path: str,
+             analysis_data: Dict[str, Any],
+             graphic_paths: Dict[int, str],
+             output_path: str = "output.mp4",
+             music_path: Optional[str] = None,
+             music_volume: float = 0.1,
+             intro_path: Optional[str] = None,
+             outro_path: Optional[str] = None,
+             subtitle_config: Optional[Dict[str, Any]] = None
+             ) -> Optional[str]:
         """
         Edits the video based on the analysis data and generated graphics.
 
@@ -27,10 +37,18 @@ class Editor:
             analysis_data (Dict[str, Any]): Analysis results containing segments, captions, etc.
             graphic_paths (Dict[int, str]): A dictionary mapping graphic indices to file paths.
             output_path (str): Path to save the final video. Defaults to "output.mp4".
+            music_path (Optional[str]): Path to background music.
+            music_volume (float): Volume of background music.
+            intro_path (Optional[str]): Path to intro video.
+            outro_path (Optional[str]): Path to outro video.
+            subtitle_config (Optional[Dict[str, Any]]): Config for subtitle styling.
 
         Returns:
             Optional[str]: The path to the output video, or None if editing fails.
         """
+        if subtitle_config is None:
+            subtitle_config = {}
+
         print(f"Editing video: {video_path}")
         try:
             video = VideoFileClip(video_path)
@@ -42,8 +60,6 @@ class Editor:
         if not segments:
             print("No segments defined, using full video.")
             segments = [{"start": 0, "end": video.duration}]
-        
-        clips = []
         
         # Sort segments by start time to ensure order
         segments.sort(key=lambda x: x["start"])
@@ -62,8 +78,9 @@ class Editor:
         # Extract timestamps for bisect
         g_timestamps = [x[0] for x in sorted_graphics]
         
-        graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
+
+        main_clips = []
 
         for seg in segments:
             start = float(seg.get("start", 0))
@@ -129,10 +146,16 @@ class Editor:
                     
                     if duration > 0.5: # Min duration
                         try:
-                            # Using basic settings. Font might vary by system. 
-                            # 'Amiri-Bold' or 'DejaVuSans' are often available on Linux.
-                            # Passing font=None might fallback to default.
-                            text_clip = (TextClip(text, fontsize=40, color='white', stroke_color='black', stroke_width=2, method='caption', size=(sub.w * 0.9, None))
+                            # Use styles from subtitle_config
+                            fontsize = subtitle_config.get("fontsize", 40)
+                            font = subtitle_config.get("font", "Arial")
+                            color = subtitle_config.get("color", "white")
+                            stroke_color = subtitle_config.get("stroke_color", "black")
+                            stroke_width = subtitle_config.get("stroke_width", 1.5)
+
+                            text_clip = (TextClip(text, fontsize=fontsize, font=font, color=color,
+                                                 stroke_color=stroke_color, stroke_width=stroke_width,
+                                                 method='caption', size=(sub.w * 0.9, None))
                                          .set_start(rel_start)
                                          .set_duration(duration)
                                          .set_position(('center', 'bottom')))
@@ -140,26 +163,120 @@ class Editor:
                         except Exception as e:
                             print(f"Failed to create TextClip. This is often due to ImageMagick configuration.")
                             print(f"Details: {e}")
-                            print("Tip: Check if 'policy.xml' allows read/write for PDF/Text if on Linux.")
 
             if len(layers) > 1:
                 combined = CompositeVideoClip(layers)
-                clips.append(combined)
+                main_clips.append(combined)
             else:
-                clips.append(sub)
+                main_clips.append(sub)
 
-        # Concatenate
-        if clips:
-            print(f"Concatenating {len(clips)} clips...")
-            try:
-                final = concatenate_videoclips(clips, method="compose")
-                # Write file
-                final.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
-                print(f"Video saved to {output_path}")
-                return output_path
-            except Exception as e:
-                print(f"Error saving video: {e}")
-                return None
+        # Handle Transitions (Crossfade)
+        # Check if analysis_data has transitions
+        transitions = analysis_data.get("transitions", [])
+        # We can implement basic crossfade between all main clips if requested
+        # Or parse the transitions list. For now, let's just do crossfades if we have multiple clips
+        # and transitions are suggested.
+        # But simple crossfade:
+
+        # A more robust approach for transitions based on timestamp is complex because we just cut segments.
+        # If the user wants crossfades, we typically apply them between segments.
+
+        final_clips = []
+        if main_clips:
+            # Check if any transition is type "crossfade"
+            should_crossfade = any(t.get("type") == "crossfade" for t in transitions)
+
+            if should_crossfade and len(main_clips) > 1:
+                print("Applying crossfade transitions...")
+                padding = 1.0 # 1 second overlap
+                # We need to adjust start times or use composite video clip with overlapping start times
+                # concatenate_videoclips supports 'padding' with method='compose' but it simply places them one after another with negative padding
+                # To do real crossfade, we need to add fadein/fadeout effects
+
+                processed_clips = []
+                for i, clip in enumerate(main_clips):
+                    c = clip
+                    if i > 0:
+                        c = c.crossfadein(padding)
+                    processed_clips.append(c)
+
+                # Join with padding (negative padding creates overlap)
+                try:
+                    final_main = concatenate_videoclips(processed_clips, method="compose", padding=-padding)
+                except Exception as e:
+                    print(f"Crossfade failed: {e}. Falling back to simple concatenation.")
+                    final_main = concatenate_videoclips(main_clips, method="compose")
+            else:
+                final_main = concatenate_videoclips(main_clips, method="compose")
         else:
             print("No clips generated.")
+            return None
+
+        # --- Intro & Outro ---
+        sequence = []
+
+        if intro_path and os.path.exists(intro_path):
+            print(f"Adding intro: {intro_path}")
+            try:
+                intro_clip = VideoFileClip(intro_path)
+                # Resize intro to match main video if needed?
+                # Ideally videos should match resolution. We'll attempt resize.
+                if intro_clip.size != final_main.size:
+                     intro_clip = intro_clip.resize(final_main.size)
+                sequence.append(intro_clip)
+            except Exception as e:
+                print(f"Failed to load intro: {e}")
+
+        sequence.append(final_main)
+
+        if outro_path and os.path.exists(outro_path):
+             print(f"Adding outro: {outro_path}")
+             try:
+                outro_clip = VideoFileClip(outro_path)
+                if outro_clip.size != final_main.size:
+                     outro_clip = outro_clip.resize(final_main.size)
+                sequence.append(outro_clip)
+             except Exception as e:
+                print(f"Failed to load outro: {e}")
+
+        if len(sequence) > 1:
+            final_video = concatenate_videoclips(sequence, method="compose")
+        else:
+            final_video = final_main
+
+        # --- Background Music ---
+        if music_path and os.path.exists(music_path):
+            print(f"Adding background music: {music_path}")
+            try:
+                bg_music = AudioFileClip(music_path)
+
+                # Loop music if shorter than video
+                if bg_music.duration < final_video.duration:
+                    bg_music = afx.audio_loop(bg_music, duration=final_video.duration)
+                else:
+                    bg_music = bg_music.subclip(0, final_video.duration)
+
+                # Set volume
+                bg_music = bg_music.volumex(music_volume)
+
+                # Mix with original audio
+                original_audio = final_video.audio
+                if original_audio:
+                    mixed_audio = CompositeAudioClip([original_audio, bg_music])
+                else:
+                    mixed_audio = bg_music
+
+                final_video = final_video.set_audio(mixed_audio)
+
+            except Exception as e:
+                print(f"Failed to add background music: {e}")
+
+        # Write file
+        print(f"Saving to {output_path}...")
+        try:
+            final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
+            print(f"Video saved to {output_path}")
+            return output_path
+        except Exception as e:
+            print(f"Error saving video: {e}")
             return None
