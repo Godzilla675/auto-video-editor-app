@@ -133,27 +133,107 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
 
         # Mock TextClip
-        self.mock_moviepy_editor.TextClip.return_value = MagicMock()
+        mock_text_clip = MagicMock()
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+        mock_text_clip.set_start.return_value = mock_text_clip
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        mock_text_clip.set_position.return_value = mock_text_clip
+
         # Mock ImageClip
-        self.mock_moviepy_editor.ImageClip.return_value = MagicMock()
+        mock_image_clip = MagicMock()
+        self.mock_moviepy_editor.ImageClip.return_value = mock_image_clip
+        mock_image_clip.set_start.return_value = mock_image_clip
+        mock_image_clip.set_duration.return_value = mock_image_clip
+        mock_image_clip.set_position.return_value = mock_image_clip
+        mock_image_clip.resize.return_value = mock_image_clip
+
         # Mock CompositeVideoClip
         self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
         # Mock concatenate_videoclips
         mock_final = MagicMock()
+        mock_final.duration = 10.0
+        # set_audio returns a copy (or self), so we mock it to return self for testing calls
+        mock_final.set_audio.return_value = mock_final
         self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Mock AudioFileClip
+        mock_audio = MagicMock()
+        mock_audio.duration = 20.0 # Longer than video
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+        mock_audio.subclip.return_value = mock_audio
+        mock_audio.volumex.return_value = mock_audio
+
+        # Mock CompositeAudioClip
+        self.mock_moviepy_editor.CompositeAudioClip.return_value = MagicMock()
 
         editor = Editor()
         analysis_data = {
-            "segments": [{"start": 0, "end": 5}],
+            "segments": [{"start": 0, "end": 5}, {"start": 6, "end": 10}],
             "captions": [{"start": 0, "end": 2, "text": "Hello"}],
-            "graphics": [{"timestamp": 3, "duration": 2}]
+            "graphics": [{"timestamp": 3, "duration": 2}],
+            "transitions": [{"timestamp": 5.5, "type": "crossfade"}]
         }
         graphic_paths = {0: "graphic.png"}
 
+        # Use subtitle config
+        subtitle_config = {
+            "font": "Verdana",
+            "fontsize": 50,
+            "color": "yellow",
+            "stroke_color": "black",
+            "stroke_width": 3
+        }
+
         with patch('os.path.exists', return_value=True):
-            output = editor.edit("dummy.mp4", analysis_data, graphic_paths)
+            # Pass all new arguments
+            output = editor.edit(
+                "dummy.mp4",
+                analysis_data,
+                graphic_paths,
+                music_path="music.mp3",
+                music_volume=0.5,
+                intro_path="intro.mp4",
+                outro_path="outro.mp4",
+                subtitle_config=subtitle_config
+            )
+
             self.assertEqual(output, "output.mp4")
+            # When we have intro/outro, final_video is created by concatenate_videoclips(sequence)
+            # The original mock_final was for concatenate_videoclips(clips) from main content.
+            # We need to check if ANY return value from concatenate_videoclips had write_videofile called.
+            # Or better, since mock_final is the return value of ALL concatenate_videoclips calls
+            # (because we set return_value on the mocked function), it should be the one called.
+
+            # Debugging: print calls
+            print("VideoFileClip calls:", self.mock_moviepy_editor.VideoFileClip.call_args_list)
+            print("AudioFileClip calls:", self.mock_moviepy_editor.AudioFileClip.call_args_list)
+            print("Concatenate calls:", self.mock_moviepy_editor.concatenate_videoclips.call_args_list)
+
             mock_final.write_videofile.assert_called()
+
+            # Verify TextClip called with custom settings
+            self.mock_moviepy_editor.TextClip.assert_called_with(
+                "Hello",
+                fontsize=50,
+                font="Verdana",
+                color="yellow",
+                stroke_color="black",
+                stroke_width=3,
+                method='caption',
+                size=(90.0, None)
+            )
+
+            # Verify Music
+            self.mock_moviepy_editor.AudioFileClip.assert_called_with("music.mp3")
+
+            # Verify Intro/Outro loading (VideoFileClip called multiple times)
+            # We expect calls for: dummy.mp4 (main), intro.mp4, outro.mp4
+            # We can check if VideoFileClip was called with these paths
+            calls = self.mock_moviepy_editor.VideoFileClip.call_args_list
+            args_list = [c[0][0] for c in calls]
+            self.assertIn("dummy.mp4", args_list)
+            self.assertIn("intro.mp4", args_list)
+            self.assertIn("outro.mp4", args_list)
 
 if __name__ == '__main__':
     unittest.main()
