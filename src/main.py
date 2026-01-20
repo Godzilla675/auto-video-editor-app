@@ -43,6 +43,14 @@ def main() -> None:
     parser.add_argument("--video", help="Path to video file", default=None)
     parser.add_argument("--url", help="URL of video to download", default=None)
     parser.add_argument("--output", help="Output filename", default="final_video.mp4")
+    # New features arguments
+    parser.add_argument("--music", help="Path to background music file", default=None)
+    parser.add_argument("--music-volume", help="Volume of background music (0.0 to 1.0)", type=float, default=0.5)
+    parser.add_argument("--crossfade", help="Crossfade duration in seconds", type=float, default=0.0)
+    parser.add_argument("--filter", help="Visual filter to apply (bw, contrast)", default=None)
+    parser.add_argument("--font", help="Subtitle font", default="Arial")
+    parser.add_argument("--fontsize", help="Subtitle font size", type=int, default=40)
+    parser.add_argument("--color", help="Subtitle color", default="white")
     
     args = parser.parse_args()
     
@@ -115,7 +123,20 @@ def main() -> None:
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
-    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output)
+
+    edit_options = {
+        "music_path": args.music,
+        "music_volume": args.music_volume,
+        "crossfade": args.crossfade,
+        "filter": args.filter,
+        "subtitle": {
+            "font": args.font,
+            "fontsize": args.fontsize,
+            "color": args.color
+        }
+    }
+
+    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output, options=edit_options)
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
