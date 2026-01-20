@@ -7,6 +7,12 @@ mock_moviepy = MagicMock()
 mock_moviepy_editor = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
+sys.modules["moviepy.video"] = MagicMock()
+sys.modules["moviepy.video.fx"] = MagicMock()
+sys.modules["moviepy.video.fx.all"] = MagicMock()
+sys.modules["moviepy.audio"] = MagicMock()
+sys.modules["moviepy.audio.fx"] = MagicMock()
+sys.modules["moviepy.audio.fx.all"] = MagicMock()
 sys.modules["moviepy.config"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
@@ -154,6 +160,95 @@ class TestComponents(unittest.TestCase):
             output = editor.edit("dummy.mp4", analysis_data, graphic_paths)
             self.assertEqual(output, "output.mp4")
             mock_final.write_videofile.assert_called()
+
+    def test_editor_new_features(self):
+        print("Testing Editor New Features (Mocked)...")
+        # Reuse existing mock setup from test_editor
+
+        # Mock specific video fx and audio fx
+        mock_vfx_all = sys.modules["moviepy.video.fx.all"]
+        mock_vfx_all.blackwhite = MagicMock()
+
+        mock_afx_all = sys.modules["moviepy.audio.fx.all"]
+        mock_afx_all.audio_loop = MagicMock()
+
+        # Mock AudioFileClip
+        mock_audio_clip = MagicMock()
+        mock_audio_clip.duration = 5.0 # shorter than video (10.0) to trigger loop logic
+        # Mock methods that return self or new clip
+        mock_audio_clip.volumex.return_value = mock_audio_clip
+        mock_audio_clip.subclip.return_value = mock_audio_clip
+
+        # When AudioFileClip(file) is called, return this mock
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio_clip
+        # Also mock afx.audio_loop to return a mock
+        mock_afx_all.audio_loop.return_value = mock_audio_clip
+        self.mock_moviepy_editor.CompositeAudioClip.return_value = MagicMock()
+
+        # Mock VideoFileClip instance
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        # Mock fx method for fluent interface
+        mock_clip.fx.return_value = mock_clip
+        # Mock set_audio
+        mock_clip.set_audio.return_value = mock_clip
+        # Mock crossfadein
+        mock_clip.crossfadein.return_value = mock_clip
+
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_clip # final clip is also a clip
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}, {"start": 5, "end": 10}],
+            "captions": [],
+            "graphics": []
+        }
+        graphic_paths = {}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit(
+                "dummy.mp4",
+                analysis_data,
+                graphic_paths,
+                output_path="output_features.mp4",
+                background_music="music.mp3",
+                music_volume=0.5,
+                crossfade_duration=1.0,
+                visual_filter="black_white",
+                subtitle_config={"fontsize": 50}
+            )
+
+            # Verify filter application
+            # clip.fx(vfx.blackwhite) should be called
+            mock_clip.fx.assert_called()
+            # Ideally verify vfx.blackwhite was passed, but it's a mock function
+
+            # Verify crossfade application
+            # concatenate_videoclips called with padding=-1.0
+            self.mock_moviepy_editor.concatenate_videoclips.assert_called()
+            args, kwargs = self.mock_moviepy_editor.concatenate_videoclips.call_args
+            self.assertEqual(kwargs.get("padding"), -1.0)
+
+            # Verify background music
+            self.mock_moviepy_editor.AudioFileClip.assert_called_with("music.mp3")
+            # Verify volume adjustment (volumex is a method on AudioClip)
+            # We didn't explicitly mock volumex, but it should be called on the AudioFileClip mock
+            # Since AudioFileClip is mocked by self.mock_moviepy_editor.AudioFileClip.return_value
+            # And volumex returns a new clip (or same), we check if it was called.
+
+            # Since moviepy objects are fluent, volumex might be returning a new mock object if not configured
+            # But normally we just check the call chain.
+            # bg_music might have been replaced by audio_loop result
+
+            # If loop was called, bg_music became the result of audio_loop
+            # We set audio_loop.return_value = mock_audio_clip
+            # So mock_audio_clip.volumex should be called.
+
+            mock_audio_clip.volumex.assert_called_with(0.5)
 
 if __name__ == '__main__':
     unittest.main()
