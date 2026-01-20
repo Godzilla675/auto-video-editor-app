@@ -44,6 +44,19 @@ def main() -> None:
     parser.add_argument("--url", help="URL of video to download", default=None)
     parser.add_argument("--output", help="Output filename", default="final_video.mp4")
     
+    # New features arguments
+    parser.add_argument("--music", help="Path to background music file", default=None)
+    parser.add_argument("--music-volume", help="Volume of background music (0.0 to 1.0)", type=float, default=0.1)
+    parser.add_argument("--crossfade", help="Duration of crossfade transition in seconds", type=float, default=0.0)
+    parser.add_argument("--filter", help="Visual filter to apply (e.g., 'black_white')", default=None)
+
+    # Subtitle styling arguments
+    parser.add_argument("--font", help="Font file or name for subtitles", default=None)
+    parser.add_argument("--fontsize", help="Font size for subtitles", type=int, default=40)
+    parser.add_argument("--color", help="Color of subtitle text", default='white')
+    parser.add_argument("--stroke-color", help="Color of subtitle stroke/outline", default='black')
+    parser.add_argument("--stroke-width", help="Width of subtitle stroke/outline", type=float, default=2)
+
     args = parser.parse_args()
     
     # 1. Input handling
@@ -115,7 +128,26 @@ def main() -> None:
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
-    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output)
+
+    subtitle_config = {
+        "font": args.font,
+        "fontsize": args.fontsize,
+        "color": args.color,
+        "stroke_color": args.stroke_color,
+        "stroke_width": args.stroke_width
+    }
+
+    output_path = editor.edit(
+        video_path,
+        analysis_data,
+        graphic_paths,
+        output_path=args.output,
+        background_music=args.music,
+        music_volume=args.music_volume,
+        crossfade_duration=args.crossfade,
+        visual_filter=args.filter,
+        subtitle_config=subtitle_config
+    )
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
