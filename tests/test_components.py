@@ -5,8 +5,16 @@ from unittest.mock import MagicMock, Mock
 # We need to set up specific mocks for classes we use
 mock_moviepy = MagicMock()
 mock_moviepy_editor = MagicMock()
+mock_moviepy_video_fx = MagicMock()
+mock_moviepy_audio_fx = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
+sys.modules["moviepy.video"] = MagicMock()
+sys.modules["moviepy.video.fx"] = MagicMock()
+sys.modules["moviepy.video.fx.all"] = mock_moviepy_video_fx
+sys.modules["moviepy.audio"] = MagicMock()
+sys.modules["moviepy.audio.fx"] = MagicMock()
+sys.modules["moviepy.audio.fx.all"] = mock_moviepy_audio_fx
 sys.modules["moviepy.config"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
@@ -19,6 +27,7 @@ sys.modules["numpy"] = MagicMock()
 import unittest
 import os
 import json
+import importlib
 from unittest.mock import patch
 
 # Add src to path
@@ -36,7 +45,8 @@ class TestComponents(unittest.TestCase):
         self.mock_cv2 = sys.modules["cv2"]
         mock_video = MagicMock()
         mock_video.get.return_value = 100
-        mock_video.read.return_value = (True, MagicMock(shape=(100,100,3)))
+        # Fix: ensure read() returns a tuple
+        mock_video.read.side_effect = [((True, MagicMock(shape=(100,100,3)))) for _ in range(20)]
         mock_video.isOpened.return_value = True
         self.mock_cv2.VideoCapture.return_value = mock_video
         self.mock_cv2.imencode.return_value = (True, b'data')
@@ -53,6 +63,11 @@ class TestComponents(unittest.TestCase):
         mock_model.transcribe.return_value = {"text": "hello", "segments": []}
         self.mock_whisper.load_model.return_value = mock_model
         
+        # Reload Transcriber to ensure it uses the mock
+        import src.transcriber
+        importlib.reload(src.transcriber)
+        from src.transcriber import Transcriber
+
         t = Transcriber(model_size="base")
         with patch('os.path.exists', return_value=True):
             res = t.transcribe("dummy.mp4")
@@ -69,6 +84,10 @@ class TestComponents(unittest.TestCase):
         mock_client.chat.completions.create.return_value = mock_completion
         self.mock_openai.OpenAI.return_value = mock_client
         
+        import src.analyzer
+        importlib.reload(src.analyzer)
+        from src.analyzer import Analyzer
+
         with patch('os.path.exists', return_value=True):
             a = Analyzer(api_key="key")
             res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
@@ -83,6 +102,10 @@ class TestComponents(unittest.TestCase):
         mock_completion.choices[0].message.content = 'Invalid JSON'
         mock_client.chat.completions.create.return_value = mock_completion
         self.mock_openai.OpenAI.return_value = mock_client
+
+        import src.analyzer
+        importlib.reload(src.analyzer)
+        from src.analyzer import Analyzer
 
         with patch('os.path.exists', return_value=True):
             a = Analyzer(api_key="key")
@@ -100,6 +123,11 @@ class TestComponents(unittest.TestCase):
         mock_img = MagicMock()
         self.mock_pil.Image.open.return_value = mock_img
         
+        # Reload generator
+        import src.generator
+        importlib.reload(src.generator)
+        from src.generator import Generator
+
         with patch('os.path.exists', return_value=True):
             with patch('os.makedirs'):
                 g = Generator(api_token="token")
@@ -126,10 +154,13 @@ class TestComponents(unittest.TestCase):
 
         # Mock VideoFileClip
         mock_clip = MagicMock()
-        mock_clip.duration = 10.0
+        mock_clip.duration = 10.0 # Float, not MagicMock
         mock_clip.w = 100
         mock_clip.h = 100
         mock_clip.subclip.return_value = mock_clip # subclip returns itself
+        # Add resize for new code
+        mock_clip.resize.return_value = mock_clip
+
         self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
 
         # Mock TextClip
@@ -140,7 +171,13 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
         # Mock concatenate_videoclips
         mock_final = MagicMock()
+        mock_final.duration = 10.0
         self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Reload Editor to ensure mocks are fresh
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
 
         editor = Editor()
         analysis_data = {
