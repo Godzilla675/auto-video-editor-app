@@ -44,6 +44,19 @@ def main() -> None:
     parser.add_argument("--url", help="URL of video to download", default=None)
     parser.add_argument("--output", help="Output filename", default="final_video.mp4")
     
+    # New features arguments
+    parser.add_argument("--music", help="Path to background music file", default=None)
+    parser.add_argument("--music-volume", help="Volume of background music (0.0 to 1.0)", type=float, default=0.1)
+    parser.add_argument("--crossfade", help="Crossfade duration in seconds", type=float, default=0.0)
+    parser.add_argument("--filter", help="Visual filter to apply (bw, sepia)", default=None)
+
+    # Subtitle styling
+    parser.add_argument("--font", help="Font for subtitles", default="Arial")
+    parser.add_argument("--fontsize", help="Font size for subtitles", type=int, default=40)
+    parser.add_argument("--color", help="Text color for subtitles", default="white")
+    parser.add_argument("--stroke-color", help="Stroke color for subtitles", default="black")
+    parser.add_argument("--stroke-width", help="Stroke width for subtitles", type=float, default=2)
+
     args = parser.parse_args()
     
     # 1. Input handling
@@ -115,7 +128,23 @@ def main() -> None:
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
-    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output)
+    output_path = editor.edit(
+        video_path,
+        analysis_data,
+        graphic_paths,
+        output_path=args.output,
+        music_path=args.music,
+        music_volume=args.music_volume,
+        crossfade=args.crossfade,
+        visual_filter=args.filter,
+        subtitle_style={
+            "font": args.font,
+            "fontsize": args.fontsize,
+            "color": args.color,
+            "stroke_color": args.stroke_color,
+            "stroke_width": args.stroke_width
+        }
+    )
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
