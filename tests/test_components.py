@@ -1,12 +1,18 @@
 import sys
 from unittest.mock import MagicMock, Mock
+import importlib
 
 # Mock heavy dependencies globally before importing src
 # We need to set up specific mocks for classes we use
 mock_moviepy = MagicMock()
 mock_moviepy_editor = MagicMock()
+mock_vfx = MagicMock()
+mock_afx = MagicMock()
+
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
+sys.modules["moviepy.video.fx.all"] = mock_vfx
+sys.modules["moviepy.audio.fx.all"] = mock_afx
 sys.modules["moviepy.config"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
@@ -23,6 +29,11 @@ from unittest.mock import patch
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import src.transcriber
+import src.analyzer
+import src.generator
+import src.editor
 
 from src.transcriber import Transcriber
 from src.analyzer import Analyzer
@@ -46,6 +57,12 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor = sys.modules["moviepy.editor"]
         self.mock_whisper = sys.modules["whisper"]
         self.mock_pil = sys.modules["PIL"]
+
+        # Ensure modules are reloaded to pick up mocks if changed
+        importlib.reload(src.transcriber)
+        importlib.reload(src.analyzer)
+        importlib.reload(src.generator)
+        importlib.reload(src.editor)
 
     def test_transcriber(self):
         print("Testing Transcriber (Mocked)...")
