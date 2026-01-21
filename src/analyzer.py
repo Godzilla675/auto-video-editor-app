@@ -142,18 +142,15 @@ class Analyzer:
                 print("Failed to parse JSON response. Raw response:")
                 print(result_text)
                 # Fallback: try to extract JSON from markdown block if present
-                if "```json" in result_text:
-                    try:
-                        return json.loads(result_text.split("```json")[1].split("```")[0])
-                    except Exception as e:
-                        print(f"Fallback JSON extraction failed: {e}")
-                        pass
-                elif "```" in result_text:
-                     try:
-                        return json.loads(result_text.split("```")[1])
-                     except Exception as e:
-                         print(f"Fallback JSON extraction (no lang) failed: {e}")
-                         pass
+                try:
+                    start_index = result_text.find("{")
+                    end_index = result_text.rfind("}")
+                    if start_index != -1 and end_index != -1 and end_index > start_index:
+                         json_str = result_text[start_index:end_index+1]
+                         return json.loads(json_str)
+                except Exception as e:
+                     print(f"Fallback JSON extraction failed: {e}")
+
                 return None
 
         except APIError as e:

@@ -143,7 +143,7 @@ class Editor:
                             print("Tip: Check if 'policy.xml' allows read/write for PDF/Text if on Linux.")
 
             if len(layers) > 1:
-                combined = CompositeVideoClip(layers)
+                combined = CompositeVideoClip(layers).set_duration(sub.duration)
                 clips.append(combined)
             else:
                 clips.append(sub)
