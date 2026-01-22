@@ -19,10 +19,22 @@ sys.modules["numpy"] = MagicMock()
 import unittest
 import os
 import json
+import importlib
 from unittest.mock import patch
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import src.transcriber
+import src.analyzer
+import src.generator
+import src.editor
+
+# Reload to bind to current mocks
+importlib.reload(src.transcriber)
+importlib.reload(src.analyzer)
+importlib.reload(src.generator)
+importlib.reload(src.editor)
 
 from src.transcriber import Transcriber
 from src.analyzer import Analyzer
@@ -32,6 +44,11 @@ from src.editor import Editor
 class TestComponents(unittest.TestCase):
     
     def setUp(self):
+        importlib.reload(src.transcriber)
+        importlib.reload(src.analyzer)
+        importlib.reload(src.generator)
+        importlib.reload(src.editor)
+
         # Reset mocks if needed, or setup common return values
         self.mock_cv2 = sys.modules["cv2"]
         mock_video = MagicMock()

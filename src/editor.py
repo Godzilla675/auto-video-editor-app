@@ -1,7 +1,6 @@
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
 import moviepy.config as mp_config
 import os
-import bisect
 from typing import Dict, Any, List, Optional
 
 class Editor:
@@ -48,20 +47,6 @@ class Editor:
         # Sort segments by start time to ensure order
         segments.sort(key=lambda x: x["start"])
 
-        # --- Pre-process Graphics ---
-        # Optimize graphics lookup by sorting and using bisect (O(M log M) + O(N log M)) instead of O(N * M)
-        graphics_reqs = analysis_data.get("graphics", [])
-        # Store as (timestamp, original_index, graphic_req)
-        sorted_graphics = []
-        for i, req in enumerate(graphics_reqs):
-            t = float(req.get("timestamp", 0))
-            sorted_graphics.append((t, i, req))
-
-        # Sort by timestamp
-        sorted_graphics.sort(key=lambda x: x[0])
-        # Extract timestamps for bisect
-        g_timestamps = [x[0] for x in sorted_graphics]
-        
         graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
 
@@ -82,33 +67,28 @@ class Editor:
             layers = [sub]
             
             # --- Graphics (Overlay) ---
-            # Find relevant graphics using binary search
-            idx_start = bisect.bisect_left(g_timestamps, start)
-            idx_end = bisect.bisect_left(g_timestamps, end)
-
-            for g_time, i, graphic_req in sorted_graphics[idx_start:idx_end]:
-                # g_time is already guaranteed to be >= start and < end by bisect logic
+            for i, req in enumerate(graphics_reqs):
+                g_start = float(req.get("timestamp", 0))
+                g_duration = float(req.get("duration", 3.0))
+                g_end = g_start + g_duration
                 
-                img_path = graphic_paths.get(i)
-                if img_path and os.path.exists(img_path):
-                    duration = float(graphic_req.get("duration", 3.0))
+                # Check for overlap: graphic start < segment end AND graphic end > segment start
+                if g_start < end and g_end > start:
+                    img_path = graphic_paths.get(i)
+                    if img_path and os.path.exists(img_path):
+                        rel_start = g_start - start
 
-                    rel_start = g_time - start
-                    # Ensure it doesn't exceed segment
-                    if rel_start + duration > (end - start):
-                        duration = (end - start) - rel_start
+                        print(f"Adding graphic {img_path} at relative {rel_start}s")
 
-                    print(f"Adding graphic {img_path} at relative {rel_start}s")
-
-                    try:
-                        img_clip = (ImageClip(img_path)
-                                    .set_start(rel_start)
-                                    .set_duration(duration)
-                                    .set_position("center")
-                                    .resize(height=sub.h * 0.8)) # Resize to 80% of height
-                        layers.append(img_clip)
-                    except Exception as e:
-                        print(f"Failed to create ImageClip: {e}")
+                        try:
+                            img_clip = (ImageClip(img_path)
+                                        .set_start(rel_start)
+                                        .set_duration(g_duration)
+                                        .set_position("center")
+                                        .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                            layers.append(img_clip)
+                        except Exception as e:
+                            print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
             for cap in captions:
@@ -143,7 +123,7 @@ class Editor:
                             print("Tip: Check if 'policy.xml' allows read/write for PDF/Text if on Linux.")
 
             if len(layers) > 1:
-                combined = CompositeVideoClip(layers)
+                combined = CompositeVideoClip(layers, size=sub.size).set_duration(sub.duration)
                 clips.append(combined)
             else:
                 clips.append(sub)
