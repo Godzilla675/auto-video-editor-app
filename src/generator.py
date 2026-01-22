@@ -64,11 +64,14 @@ class Generator:
                     wait_time = response.json().get('estimated_time', 20)
                     print(f"Model loading... retrying in {wait_time} seconds")
                     time.sleep(wait_time)
+                elif response.status_code in [500, 502, 504, 429]:
+                    print(f"Server error {response.status_code}. Retrying in 5 seconds...")
+                    time.sleep(5)
                 else:
                     print(f"Error generating image: {response.status_code} - {response.text}")
                     return None
             except requests.RequestException as e:
-                print(f"Request failed: {e}")
-                return None
+                print(f"Request failed: {e}. Retrying in 5 seconds...")
+                time.sleep(5)
         
         return None

@@ -3,6 +3,7 @@ import cv2
 import base64
 import json
 import math
+import re
 from typing import List, Dict, Any, Optional, Union
 from openai import OpenAI, APIError
 
@@ -109,15 +110,17 @@ class Analyzer:
 
         user_content: List[Dict[str, Any]] = []
         user_content.append({"type": "text", "text": f"Here is the transcription of the video:\n{json.dumps(transcription)}"})
-        user_content.append({"type": "text", "text": "Here are some frames from the video to help you understand the visual context:"})
         
-        for frame in frames:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{frame}"
-                }
-            })
+        if frames:
+            user_content.append({"type": "text", "text": "Here are some frames from the video to help you understand the visual context:"})
+
+            for frame in frames:
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{frame}"
+                    }
+                })
 
         print("Sending request to Gemini...")
         try:
@@ -154,6 +157,16 @@ class Analyzer:
                      except Exception as e:
                          print(f"Fallback JSON extraction (no lang) failed: {e}")
                          pass
+
+                # Regex fallback for JSON object (greedy match for outermost braces)
+                try:
+                    match = re.search(r'\{.*\}', result_text, re.DOTALL)
+                    if match:
+                        return json.loads(match.group(0))
+                except Exception as e:
+                    print(f"Regex JSON extraction failed: {e}")
+                    pass
+
                 return None
 
         except APIError as e:
