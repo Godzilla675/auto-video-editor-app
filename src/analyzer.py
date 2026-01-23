@@ -154,6 +154,18 @@ class Analyzer:
                      except Exception as e:
                          print(f"Fallback JSON extraction (no lang) failed: {e}")
                          pass
+
+                # Further fallback: find first { and last }
+                try:
+                    start_idx = result_text.find('{')
+                    end_idx = result_text.rfind('}')
+                    if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+                        json_str = result_text[start_idx:end_idx+1]
+                        return json.loads(json_str)
+                except Exception as e:
+                    print(f"Fallback JSON extraction (substring) failed: {e}")
+                    pass
+
                 return None
 
         except APIError as e:
