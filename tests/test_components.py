@@ -8,6 +8,8 @@ mock_moviepy_editor = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
 sys.modules["moviepy.config"] = MagicMock()
+sys.modules["moviepy.video.fx.all"] = MagicMock()
+sys.modules["moviepy.audio.fx.all"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
 sys.modules["openai"] = MagicMock()
@@ -154,6 +156,59 @@ class TestComponents(unittest.TestCase):
             output = editor.edit("dummy.mp4", analysis_data, graphic_paths)
             self.assertEqual(output, "output.mp4")
             mock_final.write_videofile.assert_called()
+
+    def test_editor_features(self):
+        print("Testing Editor Features (Mocked)...")
+
+        # Setup mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        mock_clip.fx.return_value = mock_clip # Fluent interface
+        mock_clip.crossfadein.return_value = mock_clip
+
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_audio = MagicMock()
+        mock_audio.duration = 20.0 # Duration for audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        mock_final = MagicMock()
+        mock_final.duration = 5.0 # Duration for final clip
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "captions": [{"start": 0, "end": 2, "text": "Subtitle"}]
+        }
+
+        # Test arguments
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {},
+                        music_path="music.mp3",
+                        crossfade_duration=1.0,
+                        visual_filter="bw",
+                        subtitle_config={"fontsize": 50, "color": "yellow"})
+
+        # Verify Music
+        self.mock_moviepy_editor.AudioFileClip.assert_called_with("music.mp3")
+
+        # Verify Visual Filter (checks if fx was called)
+        self.assertTrue(mock_clip.fx.called)
+
+        # Verify Crossfade
+        mock_clip.crossfadein.assert_called_with(1.0)
+
+        # Verify Subtitle
+        # TextClip called with fontsize=50, color='yellow'
+        self.mock_moviepy_editor.TextClip.assert_called()
+        call_args = self.mock_moviepy_editor.TextClip.call_args
+        # call_args[1] is kwargs
+        self.assertEqual(call_args[1].get('fontsize'), 50)
+        self.assertEqual(call_args[1].get('color'), 'yellow')
 
 if __name__ == '__main__':
     unittest.main()
