@@ -155,5 +155,83 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(output, "output.mp4")
             mock_final.write_videofile.assert_called()
 
+    def test_analyzer_json_substring_fallback(self):
+        print("Testing Analyzer JSON Substring Fallback (Mocked)...")
+
+        # Mock OpenAI response with messy text surrounding JSON
+        mock_client = MagicMock()
+        mock_completion = MagicMock()
+        mock_completion.choices = [MagicMock()]
+
+        messy_response = """
+        Here is the analysis you requested.
+        {
+            "segments": [{"start": 0, "end": 10}],
+            "captions": [],
+            "graphics": []
+        }
+        I hope this helps!
+        """
+
+        mock_completion.choices[0].message.content = messy_response
+        mock_client.chat.completions.create.return_value = mock_completion
+        self.mock_openai.OpenAI.return_value = mock_client
+
+        with patch('os.path.exists', return_value=True):
+            a = Analyzer(api_key="key")
+            res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
+
+            self.assertIsNotNone(res)
+            self.assertIn("segments", res)
+            self.assertEqual(len(res["segments"]), 1)
+            self.assertEqual(res["segments"][0]["start"], 0)
+
+    def test_editor_overlapping_graphic_bug(self):
+        print("Testing Editor Overlapping Graphic Bug (Mocked)...")
+
+        # Mock VideoFileClip
+        mock_clip = MagicMock()
+        mock_clip.duration = 20.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_subclip = MagicMock()
+        mock_subclip.w = 100
+        mock_subclip.h = 100
+        mock_clip.subclip.return_value = mock_subclip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Mock TextClip
+        self.mock_moviepy_editor.TextClip.return_value = MagicMock()
+
+        # Mock ImageClip
+        mock_image_clip = MagicMock()
+        mock_image_clip.set_start.return_value = mock_image_clip
+        mock_image_clip.set_duration.return_value = mock_image_clip
+        mock_image_clip.set_position.return_value = mock_image_clip
+        mock_image_clip.resize.return_value = mock_image_clip
+        self.mock_moviepy_editor.ImageClip.return_value = mock_image_clip
+
+        # Mock CompositeVideoClip
+        mock_composite = MagicMock()
+        mock_composite.set_duration.return_value = mock_composite
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_composite
+
+        # Mock concatenate_videoclips
+        mock_final = MagicMock()
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        editor = Editor()
+
+        analysis_data = {
+            "segments": [{"start": 5.0, "end": 10.0}],
+            "captions": [],
+            "graphics": [{"timestamp": 3.0, "duration": 4.0, "prompt": "g1"}]
+        }
+        graphic_paths = {0: "graphic.png"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths)
+            self.mock_moviepy_editor.ImageClip.assert_called_with("graphic.png")
+
 if __name__ == '__main__':
     unittest.main()
