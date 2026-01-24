@@ -83,32 +83,39 @@ class Editor:
             
             # --- Graphics (Overlay) ---
             # Find relevant graphics using binary search
-            idx_start = bisect.bisect_left(g_timestamps, start)
+            # We need graphics that start before 'end' AND end after 'start'.
             idx_end = bisect.bisect_left(g_timestamps, end)
 
-            for g_time, i, graphic_req in sorted_graphics[idx_start:idx_end]:
-                # g_time is already guaranteed to be >= start and < end by bisect logic
-                
+            for g_time, i, graphic_req in sorted_graphics[:idx_end]:
                 img_path = graphic_paths.get(i)
                 if img_path and os.path.exists(img_path):
                     duration = float(graphic_req.get("duration", 3.0))
+                    g_end = g_time + duration
 
-                    rel_start = g_time - start
-                    # Ensure it doesn't exceed segment
-                    if rel_start + duration > (end - start):
-                        duration = (end - start) - rel_start
+                    # Check for overlap: must end after segment start
+                    if g_end > start:
+                        rel_start = g_time - start
 
-                    print(f"Adding graphic {img_path} at relative {rel_start}s")
+                        # Clip start if graphic started before segment
+                        if rel_start < 0:
+                            duration += rel_start # rel_start is negative
+                            rel_start = 0
 
-                    try:
-                        img_clip = (ImageClip(img_path)
-                                    .set_start(rel_start)
-                                    .set_duration(duration)
-                                    .set_position("center")
-                                    .resize(height=sub.h * 0.8)) # Resize to 80% of height
-                        layers.append(img_clip)
-                    except Exception as e:
-                        print(f"Failed to create ImageClip: {e}")
+                        # Ensure it doesn't exceed segment end
+                        if rel_start + duration > (end - start):
+                            duration = (end - start) - rel_start
+
+                        print(f"Adding graphic {img_path} at relative {rel_start}s")
+
+                        try:
+                            img_clip = (ImageClip(img_path)
+                                        .set_start(rel_start)
+                                        .set_duration(duration)
+                                        .set_position("center")
+                                        .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                            layers.append(img_clip)
+                        except Exception as e:
+                            print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
             for cap in captions:
@@ -143,7 +150,7 @@ class Editor:
                             print("Tip: Check if 'policy.xml' allows read/write for PDF/Text if on Linux.")
 
             if len(layers) > 1:
-                combined = CompositeVideoClip(layers)
+                combined = CompositeVideoClip(layers).set_duration(sub.duration)
                 clips.append(combined)
             else:
                 clips.append(sub)
