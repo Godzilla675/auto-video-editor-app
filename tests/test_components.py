@@ -7,6 +7,8 @@ mock_moviepy = MagicMock()
 mock_moviepy_editor = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
+sys.modules["moviepy.video.fx.all"] = MagicMock()
+sys.modules["moviepy.audio.fx.all"] = MagicMock()
 sys.modules["moviepy.config"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
@@ -130,6 +132,9 @@ class TestComponents(unittest.TestCase):
         mock_clip.w = 100
         mock_clip.h = 100
         mock_clip.subclip.return_value = mock_clip # subclip returns itself
+        mock_clip.set_audio.return_value = mock_clip
+        mock_clip.crossfadein.return_value = mock_clip
+        mock_clip.fx.return_value = mock_clip
         self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
 
         # Mock TextClip
@@ -140,20 +145,72 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
         # Mock concatenate_videoclips
         mock_final = MagicMock()
+        mock_final.duration = 20.0
+        mock_final.set_audio.return_value = mock_final
         self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Mock AudioFileClip
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.subclip.return_value = mock_audio
+        mock_audio.volumex.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        # Mock CompositeAudioClip
+        self.mock_moviepy_editor.CompositeAudioClip.return_value = MagicMock()
+
+        # Import again just to be sure we have the class with correct globals
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+        import src.editor as editor_module
+
+        # Configure the actual mocks used by the module
+        editor_module.vfx.blackwhite = MagicMock()
+        editor_module.afx.audio_loop.return_value = mock_audio
 
         editor = Editor()
         analysis_data = {
-            "segments": [{"start": 0, "end": 5}],
+            "segments": [{"start": 0, "end": 5}, {"start": 5, "end": 10}],
             "captions": [{"start": 0, "end": 2, "text": "Hello"}],
             "graphics": [{"timestamp": 3, "duration": 2}]
         }
         graphic_paths = {0: "graphic.png"}
 
+        subtitle_config = {"color": "red", "fontsize": 50}
+
         with patch('os.path.exists', return_value=True):
-            output = editor.edit("dummy.mp4", analysis_data, graphic_paths)
+            output = editor.edit(
+                "dummy.mp4",
+                analysis_data,
+                graphic_paths,
+                music_path="music.mp3",
+                music_volume=0.5,
+                crossfade=1.0,
+                visual_filter="bw",
+                subtitle_config=subtitle_config
+            )
+
             self.assertEqual(output, "output.mp4")
             mock_final.write_videofile.assert_called()
+
+            # Verify music was loaded
+            self.mock_moviepy_editor.AudioFileClip.assert_called_with("music.mp3")
+            # Verify loop was called
+            editor_module.afx.audio_loop.assert_called()
+
+            # Verify crossfade was called
+            mock_clip.crossfadein.assert_called_with(1.0)
+
+            # Verify filter was called
+            mock_clip.fx.assert_called_with(editor_module.vfx.blackwhite)
+
+            # Verify subtitle config
+            self.mock_moviepy_editor.TextClip.assert_called()
+            call_args = self.mock_moviepy_editor.TextClip.call_args
+            self.assertEqual(call_args[1]['color'], 'red')
+            self.assertEqual(call_args[1]['fontsize'], 50)
 
 if __name__ == '__main__':
     unittest.main()

@@ -44,6 +44,19 @@ def main() -> None:
     parser.add_argument("--url", help="URL of video to download", default=None)
     parser.add_argument("--output", help="Output filename", default="final_video.mp4")
     
+    # New features
+    parser.add_argument("--music", help="Path or URL to background music file", default=None)
+    parser.add_argument("--music-volume", help="Volume of background music (0.0 to 1.0)", type=float, default=0.1)
+    parser.add_argument("--crossfade", help="Duration of crossfade transition (seconds)", type=float, default=0.0)
+    parser.add_argument("--filter", help="Visual filter to apply (e.g., 'bw')", default=None)
+
+    # Subtitle styling
+    parser.add_argument("--font", help="Subtitle font", default=None)
+    parser.add_argument("--fontsize", help="Subtitle font size", type=int, default=40)
+    parser.add_argument("--color", help="Subtitle color", default="white")
+    parser.add_argument("--stroke_color", help="Subtitle stroke color", default="black")
+    parser.add_argument("--stroke_width", help="Subtitle stroke width", type=float, default=2.0)
+
     args = parser.parse_args()
     
     # 1. Input handling
@@ -54,6 +67,19 @@ def main() -> None:
     if not video_path or not os.path.exists(video_path):
         print("Error: No valid video file provided.")
         return
+
+    # Handle music input
+    music_path = args.music
+    if music_path and (music_path.startswith("http://") or music_path.startswith("https://")):
+        music_path = download_video(music_path, filename="music_input.mp3")
+
+    subtitle_config = {
+        "font": args.font,
+        "fontsize": args.fontsize,
+        "color": args.color,
+        "stroke_color": args.stroke_color,
+        "stroke_width": args.stroke_width
+    }
 
     # 2. Setup Components
     gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -115,7 +141,17 @@ def main() -> None:
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
-    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output)
+    output_path = editor.edit(
+        video_path,
+        analysis_data,
+        graphic_paths,
+        output_path=args.output,
+        music_path=music_path,
+        music_volume=args.music_volume,
+        crossfade=args.crossfade,
+        visual_filter=args.filter,
+        subtitle_config=subtitle_config
+    )
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
