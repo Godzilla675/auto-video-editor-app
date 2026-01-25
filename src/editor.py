@@ -82,33 +82,49 @@ class Editor:
             layers = [sub]
             
             # --- Graphics (Overlay) ---
-            # Find relevant graphics using binary search
-            idx_start = bisect.bisect_left(g_timestamps, start)
-            idx_end = bisect.bisect_left(g_timestamps, end)
+            # Find relevant graphics that overlap with the segment
+            # A graphic overlaps if its start < segment_end AND its end > segment_start
 
-            for g_time, i, graphic_req in sorted_graphics[idx_start:idx_end]:
-                # g_time is already guaranteed to be >= start and < end by bisect logic
+            # Optimization:
+            # We only need to check graphics that start before segment end.
+            idx_limit = bisect.bisect_left(g_timestamps, end)
+
+            for g_time, i, graphic_req in sorted_graphics[:idx_limit]:
+                duration = float(graphic_req.get("duration", 3.0))
+                g_end = g_time + duration
                 
-                img_path = graphic_paths.get(i)
-                if img_path and os.path.exists(img_path):
-                    duration = float(graphic_req.get("duration", 3.0))
+                if g_end > start:
+                    # Overlap detected
+                    img_path = graphic_paths.get(i)
+                    if img_path and os.path.exists(img_path):
+                        # Calculate relative start. If graphic started before segment, rel_start is negative.
+                        rel_start = g_time - start
 
-                    rel_start = g_time - start
-                    # Ensure it doesn't exceed segment
-                    if rel_start + duration > (end - start):
-                        duration = (end - start) - rel_start
+                        # Clip duration to fit in segment if necessary
+                        # If rel_start is negative, we need to reduce duration from the start
+                        if rel_start < 0:
+                            duration += rel_start # rel_start is negative, so this subtracts
+                            rel_start = 0
 
-                    print(f"Adding graphic {img_path} at relative {rel_start}s")
+                        # Ensure it doesn't exceed segment end
+                        segment_duration = end - start
+                        if rel_start + duration > segment_duration:
+                            duration = segment_duration - rel_start
 
-                    try:
-                        img_clip = (ImageClip(img_path)
-                                    .set_start(rel_start)
-                                    .set_duration(duration)
-                                    .set_position("center")
-                                    .resize(height=sub.h * 0.8)) # Resize to 80% of height
-                        layers.append(img_clip)
-                    except Exception as e:
-                        print(f"Failed to create ImageClip: {e}")
+                        if duration <= 0:
+                            continue
+
+                        print(f"Adding graphic {img_path} at relative {rel_start}s")
+
+                        try:
+                            img_clip = (ImageClip(img_path)
+                                        .set_start(rel_start)
+                                        .set_duration(duration)
+                                        .set_position("center")
+                                        .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                            layers.append(img_clip)
+                        except Exception as e:
+                            print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
             for cap in captions:
@@ -132,7 +148,8 @@ class Editor:
                             # Using basic settings. Font might vary by system. 
                             # 'Amiri-Bold' or 'DejaVuSans' are often available on Linux.
                             # Passing font=None might fallback to default.
-                            text_clip = (TextClip(text, fontsize=40, color='white', stroke_color='black', stroke_width=2, method='caption', size=(sub.w * 0.9, None))
+                            font = 'DejaVuSans'
+                            text_clip = (TextClip(text, fontsize=40, color='white', stroke_color='black', stroke_width=2, method='caption', size=(sub.w * 0.9, None), font=font)
                                          .set_start(rel_start)
                                          .set_duration(duration)
                                          .set_position(('center', 'bottom')))
@@ -144,6 +161,7 @@ class Editor:
 
             if len(layers) > 1:
                 combined = CompositeVideoClip(layers)
+                combined.duration = sub.duration
                 clips.append(combined)
             else:
                 clips.append(sub)
