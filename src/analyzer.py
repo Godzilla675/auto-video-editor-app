@@ -109,15 +109,16 @@ class Analyzer:
 
         user_content: List[Dict[str, Any]] = []
         user_content.append({"type": "text", "text": f"Here is the transcription of the video:\n{json.dumps(transcription)}"})
-        user_content.append({"type": "text", "text": "Here are some frames from the video to help you understand the visual context:"})
         
-        for frame in frames:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{frame}"
-                }
-            })
+        if frames:
+            user_content.append({"type": "text", "text": "Here are some frames from the video to help you understand the visual context:"})
+            for frame in frames:
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{frame}"
+                    }
+                })
 
         print("Sending request to Gemini...")
         try:
@@ -141,19 +142,16 @@ class Analyzer:
             except json.JSONDecodeError:
                 print("Failed to parse JSON response. Raw response:")
                 print(result_text)
-                # Fallback: try to extract JSON from markdown block if present
-                if "```json" in result_text:
-                    try:
-                        return json.loads(result_text.split("```json")[1].split("```")[0])
-                    except Exception as e:
-                        print(f"Fallback JSON extraction failed: {e}")
-                        pass
-                elif "```" in result_text:
-                     try:
-                        return json.loads(result_text.split("```")[1])
-                     except Exception as e:
-                         print(f"Fallback JSON extraction (no lang) failed: {e}")
-                         pass
+                # Fallback: find first { and last }
+                try:
+                    start_idx = result_text.find('{')
+                    end_idx = result_text.rfind('}')
+                    if start_idx != -1 and end_idx != -1:
+                        json_str = result_text[start_idx : end_idx + 1]
+                        return json.loads(json_str)
+                except Exception as e:
+                    print(f"Fallback JSON extraction failed: {e}")
+
                 return None
 
         except APIError as e:
