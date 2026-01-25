@@ -11,28 +11,21 @@ from src.analyzer import Analyzer
 from src.generator import Generator
 from src.editor import Editor
 
-def download_video(url: str, filename: str = "input.mp4") -> Optional[str]:
+def download_file(url: str, filename: str) -> Optional[str]:
     """
-    Downloads a video from a URL to a local file.
-
-    Args:
-        url (str): The URL of the video to download.
-        filename (str): The local filename to save the video as. Defaults to "input.mp4".
-
-    Returns:
-        Optional[str]: The path to the downloaded file, or None if download fails.
+    Downloads a file from a URL to a local filename.
     """
-    print(f"Downloading video from {url}...")
+    print(f"Downloading from {url}...")
     try:
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192): 
                     f.write(chunk)
-        print("Download complete.")
+        print(f"Download complete: {filename}")
         return filename
     except Exception as e:
-        print(f"Error downloading video: {e}")
+        print(f"Error downloading: {e}")
         return None
 
 def main() -> None:
@@ -44,16 +37,34 @@ def main() -> None:
     parser.add_argument("--url", help="URL of video to download", default=None)
     parser.add_argument("--output", help="Output filename", default="final_video.mp4")
     
+    # New features
+    parser.add_argument("--music", help="Path or URL to background music", default=None)
+    parser.add_argument("--music-volume", help="Volume of background music (0.0-1.0)", type=float, default=0.1)
+    parser.add_argument("--crossfade", help="Crossfade duration in seconds", type=float, default=0.0)
+    parser.add_argument("--filter", help="Visual filter to apply", choices=["black_white", "none"], default=None)
+
+    # Subtitle config
+    parser.add_argument("--font", help="Font name or path", default=None)
+    parser.add_argument("--fontsize", help="Font size", type=int, default=40)
+    parser.add_argument("--color", help="Text color", default='white')
+    parser.add_argument("--stroke_color", help="Stroke color", default='black')
+    parser.add_argument("--stroke_width", help="Stroke width", type=float, default=2)
+
     args = parser.parse_args()
     
     # 1. Input handling
     video_path: Optional[str] = args.video
     if args.url:
-        video_path = download_video(args.url)
+        video_path = download_file(args.url, "input.mp4")
     
     if not video_path or not os.path.exists(video_path):
         print("Error: No valid video file provided.")
         return
+
+    # Handle music download if URL
+    music_path = args.music
+    if music_path and (music_path.startswith("http://") or music_path.startswith("https://")):
+        music_path = download_file(music_path, "background_music.mp3")
 
     # 2. Setup Components
     gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -115,7 +126,26 @@ def main() -> None:
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
-    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output)
+
+    subtitle_config = {
+        "font": args.font,
+        "fontsize": args.fontsize,
+        "color": args.color,
+        "stroke_color": args.stroke_color,
+        "stroke_width": args.stroke_width
+    }
+
+    output_path = editor.edit(
+        video_path,
+        analysis_data,
+        graphic_paths,
+        output_path=args.output,
+        subtitle_config=subtitle_config,
+        music_path=music_path,
+        music_volume=args.music_volume,
+        crossfade=args.crossfade,
+        visual_filter=args.filter
+    )
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
