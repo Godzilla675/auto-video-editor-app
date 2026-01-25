@@ -1,4 +1,6 @@
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, AudioFileClip, CompositeAudioClip
+import moviepy.video.fx.all as vfx
+import moviepy.audio.fx.all as afx
 import moviepy.config as mp_config
 import os
 import bisect
@@ -18,7 +20,12 @@ class Editor:
         if im_binary:
             mp_config.change_settings({"IMAGEMAGICK_BINARY": im_binary})
 
-    def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4") -> Optional[str]:
+    def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4",
+             subtitle_config: Optional[Dict[str, Any]] = None,
+             music_path: Optional[str] = None,
+             music_volume: float = 0.1,
+             crossfade: float = 0.0,
+             visual_filter: Optional[str] = None) -> Optional[str]:
         """
         Edits the video based on the analysis data and generated graphics.
 
@@ -27,6 +34,11 @@ class Editor:
             analysis_data (Dict[str, Any]): Analysis results containing segments, captions, etc.
             graphic_paths (Dict[int, str]): A dictionary mapping graphic indices to file paths.
             output_path (str): Path to save the final video. Defaults to "output.mp4".
+            subtitle_config (Dict[str, Any]): Config for subtitles (font, size, color).
+            music_path (str): Path to background music file.
+            music_volume (float): Volume of background music (0.0 to 1.0).
+            crossfade (float): Duration of crossfade transition between clips.
+            visual_filter (str): Filter to apply (e.g., "black_white").
 
         Returns:
             Optional[str]: The path to the output video, or None if editing fails.
@@ -62,10 +74,10 @@ class Editor:
         # Extract timestamps for bisect
         g_timestamps = [x[0] for x in sorted_graphics]
         
-        graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
+        subtitle_config = subtitle_config or {}
 
-        for seg in segments:
+        for i, seg in enumerate(segments):
             start = float(seg.get("start", 0))
             end = float(seg.get("end", video.duration))
             
@@ -79,6 +91,10 @@ class Editor:
             print(f"Processing segment: {start}s - {end}s")
             sub = video.subclip(start, end)
             
+            # Apply Filter
+            if visual_filter == "black_white":
+                sub = sub.fx(vfx.blackwhite)
+
             layers = [sub]
             
             # --- Graphics (Overlay) ---
@@ -86,10 +102,10 @@ class Editor:
             idx_start = bisect.bisect_left(g_timestamps, start)
             idx_end = bisect.bisect_left(g_timestamps, end)
 
-            for g_time, i, graphic_req in sorted_graphics[idx_start:idx_end]:
+            for g_time, idx, graphic_req in sorted_graphics[idx_start:idx_end]:
                 # g_time is already guaranteed to be >= start and < end by bisect logic
                 
-                img_path = graphic_paths.get(i)
+                img_path = graphic_paths.get(idx)
                 if img_path and os.path.exists(img_path):
                     duration = float(graphic_req.get("duration", 3.0))
 
@@ -132,7 +148,14 @@ class Editor:
                             # Using basic settings. Font might vary by system. 
                             # 'Amiri-Bold' or 'DejaVuSans' are often available on Linux.
                             # Passing font=None might fallback to default.
-                            text_clip = (TextClip(text, fontsize=40, color='white', stroke_color='black', stroke_width=2, method='caption', size=(sub.w * 0.9, None))
+                            text_clip = (TextClip(text,
+                                                  fontsize=subtitle_config.get("fontsize", 40),
+                                                  color=subtitle_config.get("color", 'white'),
+                                                  stroke_color=subtitle_config.get("stroke_color", 'black'),
+                                                  stroke_width=subtitle_config.get("stroke_width", 2),
+                                                  font=subtitle_config.get("font"),
+                                                  method='caption',
+                                                  size=(sub.w * 0.9, None))
                                          .set_start(rel_start)
                                          .set_duration(duration)
                                          .set_position(('center', 'bottom')))
@@ -143,16 +166,48 @@ class Editor:
                             print("Tip: Check if 'policy.xml' allows read/write for PDF/Text if on Linux.")
 
             if len(layers) > 1:
-                combined = CompositeVideoClip(layers)
-                clips.append(combined)
+                segment_clip = CompositeVideoClip(layers).set_duration(sub.duration)
             else:
-                clips.append(sub)
+                segment_clip = sub
+
+            # Apply Crossfade
+            if crossfade > 0 and i > 0:
+                 segment_clip = segment_clip.crossfadein(crossfade)
+
+            clips.append(segment_clip)
 
         # Concatenate
         if clips:
             print(f"Concatenating {len(clips)} clips...")
             try:
-                final = concatenate_videoclips(clips, method="compose")
+                padding = -crossfade if crossfade > 0 else 0
+                final = concatenate_videoclips(clips, method="compose", padding=padding)
+
+                # --- Background Music ---
+                if music_path and os.path.exists(music_path):
+                    print(f"Adding background music from {music_path}")
+                    try:
+                        music = AudioFileClip(music_path)
+                        # Loop if shorter
+                        if music.duration < final.duration:
+                             music = afx.audio_loop(music, duration=final.duration)
+                        else:
+                             music = music.subclip(0, final.duration)
+
+                        # Adjust volume
+                        music = music.fx(afx.volumex, music_volume)
+
+                        # Mix with original audio
+                        original_audio = final.audio
+                        if original_audio:
+                            final_audio = CompositeAudioClip([original_audio, music])
+                        else:
+                            final_audio = music
+
+                        final = final.set_audio(final_audio)
+                    except Exception as e:
+                        print(f"Error adding music: {e}")
+
                 # Write file
                 final.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
                 print(f"Video saved to {output_path}")
