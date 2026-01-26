@@ -38,7 +38,7 @@ class Generator:
         print(f"Generating image for prompt: {prompt}")
         payload = {"inputs": prompt}
         
-        # Retry logic for model loading
+        # Retry logic for model loading and common errors
         max_retries = 5
         for i in range(max_retries):
             try:
@@ -59,16 +59,28 @@ class Generator:
                     except Exception as e:
                         print(f"Error saving image: {e}")
                         return None
-                elif response.status_code == 503:
-                    # Model loading
-                    wait_time = response.json().get('estimated_time', 20)
-                    print(f"Model loading... retrying in {wait_time} seconds")
+
+                # Retry on specific error codes
+                elif response.status_code in [500, 502, 503, 504, 429]:
+                    wait_time = 20
+                    if response.status_code == 503:
+                        try:
+                            wait_time = response.json().get('estimated_time', 20)
+                        except Exception:
+                            pass
+
+                    print(f"Error {response.status_code}. Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
                 else:
                     print(f"Error generating image: {response.status_code} - {response.text}")
                     return None
+
             except requests.RequestException as e:
                 print(f"Request failed: {e}")
-                return None
+                if i < max_retries - 1:
+                    print("Retrying...")
+                    time.sleep(5)
+                else:
+                    return None
         
         return None
