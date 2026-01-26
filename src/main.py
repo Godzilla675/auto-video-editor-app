@@ -44,12 +44,31 @@ def main() -> None:
     parser.add_argument("--url", help="URL of video to download", default=None)
     parser.add_argument("--output", help="Output filename", default="final_video.mp4")
     
+    # New features arguments
+    parser.add_argument("--music", help="Path or URL to background music file", default=None)
+    parser.add_argument("--music-volume", help="Volume of background music (0.0-1.0)", type=float, default=0.1)
+    parser.add_argument("--crossfade", help="Crossfade duration in seconds", type=float, default=0.0)
+    parser.add_argument("--filter", help="Visual filter to apply (black_white, invert_colors, painting)", default=None)
+
+    # Subtitle arguments
+    parser.add_argument("--font", help="Subtitle font", default="DejaVuSans")
+    parser.add_argument("--fontsize", help="Subtitle font size", type=int, default=40)
+    parser.add_argument("--color", help="Subtitle color", default="white")
+    parser.add_argument("--stroke_color", help="Subtitle stroke color", default="black")
+    parser.add_argument("--stroke_width", help="Subtitle stroke width", type=int, default=2)
+
     args = parser.parse_args()
     
     # 1. Input handling
     video_path: Optional[str] = args.video
     if args.url:
         video_path = download_video(args.url)
+
+    # Handle music download if URL
+    music_path = args.music
+    if music_path and (music_path.startswith("http://") or music_path.startswith("https://")):
+         print("Downloading background music...")
+         music_path = download_video(music_path, filename="background_music.mp3")
     
     if not video_path or not os.path.exists(video_path):
         print("Error: No valid video file provided.")
@@ -115,7 +134,18 @@ def main() -> None:
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
-    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output)
+
+    subtitle_config = {
+        "font": args.font,
+        "fontsize": args.fontsize,
+        "color": args.color,
+        "stroke_color": args.stroke_color,
+        "stroke_width": args.stroke_width
+    }
+
+    output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output,
+                              music=music_path, music_volume=args.music_volume, crossfade=args.crossfade,
+                              subtitle_config=subtitle_config, visual_filter=args.filter)
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
