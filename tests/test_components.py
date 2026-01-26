@@ -8,6 +8,8 @@ mock_moviepy_editor = MagicMock()
 sys.modules["moviepy"] = mock_moviepy
 sys.modules["moviepy.editor"] = mock_moviepy_editor
 sys.modules["moviepy.config"] = MagicMock()
+sys.modules["moviepy.video.fx.all"] = MagicMock()
+sys.modules["moviepy.audio.fx.all"] = MagicMock()
 
 sys.modules["whisper"] = MagicMock()
 sys.modules["openai"] = MagicMock()
@@ -89,6 +91,22 @@ class TestComponents(unittest.TestCase):
             res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
             self.assertIsNone(res)
 
+    def test_analyzer_fallback_substring(self):
+        print("Testing Analyzer Fallback Substring (Mocked)...")
+        mock_client = MagicMock()
+        mock_completion = MagicMock()
+        mock_completion.choices = [MagicMock()]
+        # JSON hidden in garbage
+        mock_completion.choices[0].message.content = 'Some text { "segments": [] } more text'
+        mock_client.chat.completions.create.return_value = mock_completion
+        self.mock_openai.OpenAI.return_value = mock_client
+
+        with patch('os.path.exists', return_value=True):
+            a = Analyzer(api_key="key")
+            res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
+            self.assertIsNotNone(res)
+            self.assertIn("segments", res)
+
     def test_generator_success(self):
         print("Testing Generator Success (Mocked)...")
         
@@ -137,7 +155,10 @@ class TestComponents(unittest.TestCase):
         # Mock ImageClip
         self.mock_moviepy_editor.ImageClip.return_value = MagicMock()
         # Mock CompositeVideoClip
-        self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
         # Mock concatenate_videoclips
         mock_final = MagicMock()
         self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
@@ -154,6 +175,92 @@ class TestComponents(unittest.TestCase):
             output = editor.edit("dummy.mp4", analysis_data, graphic_paths)
             self.assertEqual(output, "output.mp4")
             mock_final.write_videofile.assert_called()
+
+    def test_editor_new_features(self):
+        print("Testing Editor New Features (Mocked)...")
+
+        # Need to reload module to ensure it captures new mocks if any
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Manually align the module's imported vfx/afx with our global mocks
+        # This is necessary because re-importing submodules of mocked packages can be inconsistent
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        mock_clip.crossfadein.return_value = mock_clip # Chainable
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Mock CompositeVideoClip set_duration
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        mock_final.set_audio.return_value = mock_final # Chainable
+        mock_final.duration = 20.0 # Set explicit duration for comparison
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Mock Audio
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.volumex.return_value = mock_audio
+        mock_audio.subclip.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        # Mock fx
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_vfx.blackwhite.return_value = mock_final
+
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+        mock_afx.audio_loop.return_value = mock_audio
+
+        editor = Editor()
+        # 2 segments to trigger crossfade logic
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}, {"start": 5, "end": 10}],
+        }
+
+        subtitle_config = {"font": "Arial", "fontsize": 50}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {},
+                        music="music.mp3", music_volume=0.5, crossfade=1.0,
+                        subtitle_config=subtitle_config, visual_filter="black_white")
+
+            # Check music
+            self.mock_moviepy_editor.AudioFileClip.assert_called_with("music.mp3")
+            mock_audio.volumex.assert_called_with(0.5)
+
+            # Check filter
+            mock_vfx.blackwhite.assert_called()
+
+            # Check crossfade
+            # crossfadein should be called on the second clip (which is mock_clip)
+            mock_clip.crossfadein.assert_called_with(1.0)
+
+        # Re-run with caption to test subtitle config
+        analysis_data["captions"] = [{"start": 0, "end": 2, "text": "Test"}]
+        mock_text_clip = MagicMock()
+        mock_text_clip.set_start.return_value = mock_text_clip
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        mock_text_clip.set_position.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {}, subtitle_config=subtitle_config)
+            self.mock_moviepy_editor.TextClip.assert_called()
+            call_args = self.mock_moviepy_editor.TextClip.call_args
+            self.assertEqual(call_args[1]['font'], "Arial")
+            self.assertEqual(call_args[1]['fontsize'], 50)
 
 if __name__ == '__main__':
     unittest.main()
