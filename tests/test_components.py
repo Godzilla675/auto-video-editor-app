@@ -262,5 +262,100 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_enhanced_features_v2(self):
+        print("Testing Editor Enhanced Features V2 (Mocked)...")
+
+        # Reload
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Setup Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Mock TextClip for Intro/Outro
+        mock_text_clip = MagicMock()
+        mock_text_clip.set_position.return_value = mock_text_clip
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        # Mock ImageClip for Graphics
+        mock_image_clip = MagicMock()
+        mock_image_clip.set_start.return_value = mock_image_clip
+        mock_image_clip.set_duration.return_value = mock_image_clip
+        mock_image_clip.set_position.return_value = mock_image_clip
+        mock_image_clip.resize.return_value = mock_image_clip
+        mock_image_clip.crossfadein.return_value = mock_image_clip # Check for this
+        self.mock_moviepy_editor.ImageClip.return_value = mock_image_clip
+
+        # Mock Audio
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.volumex.return_value = mock_audio
+        mock_audio.subclip.return_value = mock_audio
+        # .fx() returns self usually or new clip
+        mock_audio.fx.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        # Mock CompositeVideoClip
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        # Mock Concatenate
+        mock_final = MagicMock()
+        mock_final.duration = 20.0  # Set explicit duration
+        mock_final.size = (100, 100) # Set explicit size
+        mock_final.set_audio.return_value = mock_final
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Mock FX
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_vfx.mirror_x.return_value = mock_final
+
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+        mock_afx.audio_loop.return_value = mock_audio  # Ensure loop returns our mock
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "graphics": [{"timestamp": 2, "duration": 2}] # To test graphic crossfade
+        }
+        graphic_paths = {0: "g.png"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths,
+                        intro_text="Intro", outro_text="Outro",
+                        visual_filter="mirror_x", music="music.mp3")
+
+            # 1. Verify Intro/Outro TextClip calls
+            # We expect TextClip to be called at least twice (Intro, Outro)
+            # args for Intro: "Intro", ...
+            # args for Outro: "Outro", ...
+            text_calls = [args[0] for args, _ in self.mock_moviepy_editor.TextClip.call_args_list]
+            self.assertIn("Intro", text_calls)
+            self.assertIn("Outro", text_calls)
+
+            # 2. Verify Graphic Crossfade
+            mock_image_clip.crossfadein.assert_called_with(0.5)
+
+            # 3. Verify Filter mirror_x
+            mock_vfx.mirror_x.assert_called()
+
+            # 4. Verify Music Fading
+            # Check if fx was called with audio_fadein and audio_fadeout
+            # We can check the arguments passed to fx
+            fx_calls = [args[0] for args, _ in mock_audio.fx.call_args_list]
+            self.assertIn(mock_afx.audio_fadein, fx_calls)
+            self.assertIn(mock_afx.audio_fadeout, fx_calls)
+
 if __name__ == '__main__':
     unittest.main()
