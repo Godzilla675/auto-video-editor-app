@@ -8,10 +8,10 @@ from openai import OpenAI, APIError
 
 class Analyzer:
     """
-    A class to analyze video content and transcription using a Large Language Model (Gemini 3 Flash).
+    A class to analyze video content and transcription using a Large Language Model (Gemini 3 Pro).
     """
 
-    def __init__(self, api_key: str, base_url: str = "https://godzilla865-cliproxy-api.hf.space/v1", model: str = "gemini-3-flash-preview") -> None:
+    def __init__(self, api_key: str, base_url: str = "https://godzilla865-cliproxy-api.hf.space/v1", model: str = "gemini-3-pro-preview") -> None:
         """
         Initialize the Analyzer.
 
