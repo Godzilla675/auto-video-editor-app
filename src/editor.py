@@ -103,33 +103,38 @@ class Editor:
             layers = [sub]
             
             # --- Graphics (Overlay) ---
-            # Find relevant graphics using binary search
-            idx_start = bisect.bisect_left(g_timestamps, start)
+            # Find relevant graphics. We need graphics that OVERLAP with [start, end).
+            # Overlap condition: graphic_start < end AND graphic_end > start.
+
+            # Since sorted_graphics is sorted by start time, we can stop checking when graphic_start >= end.
             idx_end = bisect.bisect_left(g_timestamps, end)
 
-            for g_time, i, graphic_req in sorted_graphics[idx_start:idx_end]:
-                # g_time is already guaranteed to be >= start and < end by bisect logic
-                
+            for g_time, i, graphic_req in sorted_graphics[:idx_end]:
                 img_path = graphic_paths.get(i)
                 if img_path and os.path.exists(img_path):
-                    duration = float(graphic_req.get("duration", 3.0))
+                    g_duration = float(graphic_req.get("duration", 3.0))
+                    g_end = g_time + g_duration
 
-                    rel_start = g_time - start
-                    # Ensure it doesn't exceed segment
-                    if rel_start + duration > (end - start):
-                        duration = (end - start) - rel_start
+                    if g_end > start:
+                        # It overlaps!
+                        # Calculate relative start and duration for this segment.
+                        rel_start = max(0, g_time - start)
 
-                    print(f"Adding graphic {img_path} at relative {rel_start}s")
+                        overlap_start = max(g_time, start)
+                        overlap_end = min(g_end, end)
+                        duration = overlap_end - overlap_start
 
-                    try:
-                        img_clip = (ImageClip(img_path)
-                                    .set_start(rel_start)
-                                    .set_duration(duration)
-                                    .set_position("center")
-                                    .resize(height=sub.h * 0.8)) # Resize to 80% of height
-                        layers.append(img_clip)
-                    except Exception as e:
-                        print(f"Failed to create ImageClip: {e}")
+                        if duration > 0:
+                            print(f"Adding graphic {img_path} at relative {rel_start}s with duration {duration}s")
+                            try:
+                                img_clip = (ImageClip(img_path)
+                                            .set_start(rel_start)
+                                            .set_duration(duration)
+                                            .set_position("center")
+                                            .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                                layers.append(img_clip)
+                            except Exception as e:
+                                print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
             for cap in captions:
@@ -140,13 +145,13 @@ class Editor:
                 if not text:
                     continue
                 
-                # Check if caption starts in this segment
-                if start <= c_start < end:
-                    rel_start = c_start - start
-                    # Cap end at segment end
-                    actual_end = min(c_end, end)
-                    rel_end = actual_end - start
-                    duration = rel_end - rel_start
+                # Check for overlap: caption ends after segment starts AND caption starts before segment ends
+                if c_end > start and c_start < end:
+                    rel_start = max(0, c_start - start)
+
+                    overlap_start = max(c_start, start)
+                    overlap_end = min(c_end, end)
+                    duration = overlap_end - overlap_start
                     
                     if duration > 0.5: # Min duration
                         try:

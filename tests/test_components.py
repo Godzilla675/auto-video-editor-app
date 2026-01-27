@@ -30,10 +30,15 @@ from src.transcriber import Transcriber
 from src.analyzer import Analyzer
 from src.generator import Generator
 from src.editor import Editor
+import importlib
+import src.editor
 
 class TestComponents(unittest.TestCase):
     
     def setUp(self):
+        # Reload src.editor to ensure it uses the current global mocks
+        importlib.reload(src.editor)
+
         # Reset mocks if needed, or setup common return values
         self.mock_cv2 = sys.modules["cv2"]
         mock_video = MagicMock()
