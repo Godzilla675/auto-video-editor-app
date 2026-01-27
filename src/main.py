@@ -56,6 +56,8 @@ def main() -> None:
     parser.add_argument("--color", help="Subtitle color", default="white")
     parser.add_argument("--stroke_color", help="Subtitle stroke color", default="black")
     parser.add_argument("--stroke_width", help="Subtitle stroke width", type=int, default=2)
+    parser.add_argument("--assets-dir", help="Directory to save generated assets", default="generated_images")
+    parser.add_argument("--model", help="Gemini model to use", default="gemini-3-pro-preview")
 
     args = parser.parse_args()
     
@@ -83,8 +85,8 @@ def main() -> None:
         return
 
     transcriber = Transcriber()
-    analyzer = Analyzer(api_key=gemini_key)
-    generator = Generator(api_token=hf_token)
+    analyzer = Analyzer(api_key=gemini_key, model=args.model)
+    generator = Generator(api_token=hf_token, output_dir=args.assets_dir)
     editor = Editor()
 
     # 3. Transcribe
