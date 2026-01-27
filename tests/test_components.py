@@ -139,6 +139,26 @@ class TestComponents(unittest.TestCase):
                 path = g.generate("prompt")
                 self.assertIsNone(path)
 
+    def test_generator_custom_output_dir(self):
+        print("Testing Generator Custom Output Dir (Mocked)...")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b'fakeimagebytes'
+        self.mock_requests.post.return_value = mock_response
+
+        mock_img = MagicMock()
+        self.mock_pil.Image.open.return_value = mock_img
+
+        # Test with custom dir
+        custom_dir = "my_uploads"
+        with patch('os.path.exists', return_value=False): # Force makedirs
+            with patch('os.makedirs') as mock_makedirs:
+                g = Generator(api_token="token", output_dir=custom_dir)
+                mock_makedirs.assert_called_with(custom_dir)
+
+                path = g.generate("prompt")
+                self.assertIn(custom_dir, path)
+
     def test_editor(self):
         print("Testing Editor (Mocked)...")
 
