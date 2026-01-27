@@ -206,6 +206,10 @@ class Editor:
                         final = vfx.invert_colors(final)
                     elif visual_filter == 'painting':
                         final = vfx.painting(final)
+                    elif visual_filter == 'mirror_x':
+                        final = vfx.mirror_x(final)
+                    elif visual_filter == 'mirror_y':
+                        final = vfx.mirror_y(final)
                     # Add more filters as needed
 
                 # Apply Background Music
@@ -224,7 +228,11 @@ class Editor:
                         music_clip = music_clip.volumex(music_volume)
 
                         # Mix
-                        final_audio = CompositeAudioClip([final.audio, music_clip])
+                        audio_list = [music_clip]
+                        if final.audio:
+                            audio_list.insert(0, final.audio)
+
+                        final_audio = CompositeAudioClip(audio_list)
                         final = final.set_audio(final_audio)
                     except Exception as e:
                         print(f"Error adding background music: {e}")
