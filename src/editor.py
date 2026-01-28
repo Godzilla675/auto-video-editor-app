@@ -20,9 +20,16 @@ class Editor:
         if im_binary:
             mp_config.change_settings({"IMAGEMAGICK_BINARY": im_binary})
 
+    def _zoom_in_effect(self, clip, zoom_ratio=0.04):
+        """
+        Applies a slow zoom-in effect to the clip.
+        """
+        return clip.resize(lambda t: 1 + zoom_ratio * (t / clip.duration))
+
     def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4",
              music: Optional[str] = None, music_volume: float = 0.1, crossfade: float = 0.0,
-             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None) -> Optional[str]:
+             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None,
+             intro_text: Optional[str] = None, outro_text: Optional[str] = None) -> Optional[str]:
         """
         Edits the video based on the analysis data and generated graphics.
 
@@ -132,6 +139,10 @@ class Editor:
                                             .set_duration(duration)
                                             .set_position("center")
                                             .resize(height=sub.h * 0.8)) # Resize to 80% of height
+
+                                # Apply Zoom In Effect
+                                img_clip = self._zoom_in_effect(img_clip)
+
                                 layers.append(img_clip)
                             except Exception as e:
                                 print(f"Failed to create ImageClip: {e}")
@@ -182,6 +193,32 @@ class Editor:
             else:
                 clips.append(sub)
 
+        # Intro
+        if intro_text:
+            print("Creating Intro...")
+            try:
+                intro_clip = (TextClip(intro_text,
+                                    fontsize=70, color='white', font=sub_conf["font"],
+                                    size=(video.w, video.h), bg_color='black', method='caption')
+                                .set_duration(3.0)
+                                .set_position('center'))
+                clips.insert(0, intro_clip)
+            except Exception as e:
+                print(f"Error creating intro: {e}")
+
+        # Outro
+        if outro_text:
+            print("Creating Outro...")
+            try:
+                outro_clip = (TextClip(outro_text,
+                                    fontsize=70, color='white', font=sub_conf["font"],
+                                    size=(video.w, video.h), bg_color='black', method='caption')
+                                .set_duration(3.0)
+                                .set_position('center'))
+                clips.append(outro_clip)
+            except Exception as e:
+                print(f"Error creating outro: {e}")
+
         # Concatenate
         if clips:
             print(f"Concatenating {len(clips)} clips...")
@@ -206,6 +243,10 @@ class Editor:
                         final = vfx.invert_colors(final)
                     elif visual_filter == 'painting':
                         final = vfx.painting(final)
+                    elif visual_filter == 'mirror_x':
+                        final = vfx.mirror_x(final)
+                    elif visual_filter == 'mirror_y':
+                        final = vfx.mirror_y(final)
                     # Add more filters as needed
 
                 # Apply Background Music
@@ -222,6 +263,10 @@ class Editor:
 
                         # Adjust volume
                         music_clip = music_clip.volumex(music_volume)
+
+                        # Fade In/Out
+                        music_clip = afx.audio_fadein(music_clip, 2.0)
+                        music_clip = afx.audio_fadeout(music_clip, 2.0)
 
                         # Mix
                         final_audio = CompositeAudioClip([final.audio, music_clip])

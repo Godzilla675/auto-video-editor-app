@@ -287,5 +287,94 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_enhanced_features(self):
+        print("Testing Editor Enhanced Features (Mocked)...")
+
+        # Need to reload module to ensure it captures new mocks if any
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Manually align the module's imported vfx/afx with our global mocks
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        mock_clip.crossfadein.return_value = mock_clip
+        mock_clip.resize.return_value = mock_clip # For zoom effect
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Mock TextClip for Intro/Outro
+        mock_text_clip = MagicMock()
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        mock_text_clip.set_position.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        # Mock ImageClip
+        mock_image_clip = MagicMock()
+        mock_image_clip.set_start.return_value = mock_image_clip
+        mock_image_clip.set_duration.return_value = mock_image_clip
+        mock_image_clip.set_position.return_value = mock_image_clip
+        mock_image_clip.resize.return_value = mock_image_clip
+        self.mock_moviepy_editor.ImageClip.return_value = mock_image_clip
+
+        # Mock CompositeVideoClip
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        mock_final.set_audio.return_value = mock_final
+        mock_final.duration = 20.0
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        # Mock Audio
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.volumex.return_value = mock_audio
+        mock_audio.subclip.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        # Mock fx
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_vfx.mirror_x.return_value = mock_final
+
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+        mock_afx.audio_loop.return_value = mock_audio
+        mock_afx.audio_fadein.return_value = mock_audio
+        mock_afx.audio_fadeout.return_value = mock_audio
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "graphics": [{"timestamp": 1, "duration": 2}] # To test zoom effect on graphic
+        }
+        graphic_paths = {0: "graphic.png"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths,
+                        music="music.mp3", visual_filter="mirror_x",
+                        intro_text="Intro", outro_text="Outro")
+
+            # Verify Music Fades
+            mock_afx.audio_fadein.assert_called()
+            mock_afx.audio_fadeout.assert_called()
+
+            # Verify Filter
+            mock_vfx.mirror_x.assert_called()
+
+            # Verify Intro/Outro
+            # TextClip should be called at least 2 times (Intro + Outro)
+            self.assertTrue(self.mock_moviepy_editor.TextClip.call_count >= 2)
+
+            # Verify ImageClip resize was called (at least once for initial resize, maybe more for zoom)
+            self.assertTrue(mock_image_clip.resize.called)
+
 if __name__ == '__main__':
     unittest.main()
