@@ -83,7 +83,6 @@ class Editor:
         # Extract timestamps for bisect
         g_timestamps = [x[0] for x in sorted_graphics]
         
-        graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
 
         for seg in segments:

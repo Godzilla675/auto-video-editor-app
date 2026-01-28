@@ -50,6 +50,13 @@ class TestComponents(unittest.TestCase):
 
         self.mock_openai = sys.modules["openai"]
         self.mock_requests = sys.modules["requests"]
+        self.mock_requests.reset_mock()
+        self.mock_requests.post.side_effect = None
+        # Define a real exception class for RequestException so it can be caught
+        class MockRequestException(Exception):
+            pass
+        self.mock_requests.RequestException = MockRequestException
+
         self.mock_moviepy_editor = sys.modules["moviepy.editor"]
         self.mock_whisper = sys.modules["whisper"]
         self.mock_pil = sys.modules["PIL"]
@@ -163,6 +170,32 @@ class TestComponents(unittest.TestCase):
 
                 path = g.generate("prompt")
                 self.assertIn(custom_dir, path)
+
+    def test_generator_503_invalid_json(self):
+        print("Testing Generator 503 Invalid JSON (Mocked)...")
+
+        # Mock 503 response with invalid JSON
+        mock_response_503 = MagicMock()
+        mock_response_503.status_code = 503
+        mock_response_503.json.side_effect = Exception("Invalid JSON") # Simulate JSON decode error
+
+        # Mock successful response eventually
+        mock_response_success = MagicMock()
+        mock_response_success.status_code = 200
+        mock_response_success.content = b'fakeimagebytes'
+
+        self.mock_requests.post.side_effect = [mock_response_503, mock_response_success]
+
+        mock_img = MagicMock()
+        self.mock_pil.Image.open.return_value = mock_img
+
+        with patch('os.path.exists', return_value=True):
+            with patch('os.makedirs'):
+                with patch('time.sleep') as mock_sleep: # Mock sleep to avoid waiting
+                    g = Generator(api_token="token")
+                    path = g.generate("prompt")
+                    self.assertIsNotNone(path)
+                    mock_sleep.assert_called_with(20) # Should default to 20s
 
     def test_editor(self):
         print("Testing Editor (Mocked)...")
