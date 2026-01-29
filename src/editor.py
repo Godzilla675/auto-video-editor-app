@@ -22,7 +22,8 @@ class Editor:
 
     def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4",
              music: Optional[str] = None, music_volume: float = 0.1, crossfade: float = 0.0,
-             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None) -> Optional[str]:
+             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None,
+             intro_text: Optional[str] = None, outro_text: Optional[str] = None) -> Optional[str]:
         """
         Edits the video based on the analysis data and generated graphics.
 
@@ -131,7 +132,8 @@ class Editor:
                                             .set_start(rel_start)
                                             .set_duration(duration)
                                             .set_position("center")
-                                            .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                                            .resize(height=sub.h * 0.8) # Resize to 80% of height
+                                            .resize(lambda t: 1 + 0.05 * t)) # Zoom in effect
                                 layers.append(img_clip)
                             except Exception as e:
                                 print(f"Failed to create ImageClip: {e}")
@@ -184,6 +186,36 @@ class Editor:
 
         # Concatenate
         if clips:
+            # Intro
+            if intro_text:
+                try:
+                    print(f"Adding intro: {intro_text}")
+                    intro_clip = (TextClip(intro_text,
+                                           fontsize=70,
+                                           color='white',
+                                           bg_color='black',
+                                           size=(video.w, video.h),
+                                           font=sub_conf["font"])
+                                  .set_duration(3.0))
+                    clips.insert(0, intro_clip)
+                except Exception as e:
+                    print(f"Error adding intro: {e}")
+
+            # Outro
+            if outro_text:
+                try:
+                    print(f"Adding outro: {outro_text}")
+                    outro_clip = (TextClip(outro_text,
+                                           fontsize=70,
+                                           color='white',
+                                           bg_color='black',
+                                           size=(video.w, video.h),
+                                           font=sub_conf["font"])
+                                  .set_duration(3.0))
+                    clips.append(outro_clip)
+                except Exception as e:
+                    print(f"Error adding outro: {e}")
+
             print(f"Concatenating {len(clips)} clips...")
 
             # Apply crossfade if requested
@@ -206,6 +238,10 @@ class Editor:
                         final = vfx.invert_colors(final)
                     elif visual_filter == 'painting':
                         final = vfx.painting(final)
+                    elif visual_filter == 'mirror_x':
+                        final = vfx.mirror_x(final)
+                    elif visual_filter == 'mirror_y':
+                        final = vfx.mirror_y(final)
                     # Add more filters as needed
 
                 # Apply Background Music
