@@ -9,6 +9,10 @@ if "moviepy" not in sys.modules:
     sys.modules["moviepy"] = MagicMock()
 if "moviepy.editor" not in sys.modules:
     sys.modules["moviepy.editor"] = MagicMock()
+if "moviepy.video.fx.all" not in sys.modules:
+    sys.modules["moviepy.video.fx.all"] = MagicMock()
+if "moviepy.audio.fx.all" not in sys.modules:
+    sys.modules["moviepy.audio.fx.all"] = MagicMock()
 if "moviepy.config" not in sys.modules:
     sys.modules["moviepy.config"] = MagicMock()
 

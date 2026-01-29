@@ -224,8 +224,11 @@ class Editor:
                         music_clip = music_clip.volumex(music_volume)
 
                         # Mix
-                        final_audio = CompositeAudioClip([final.audio, music_clip])
-                        final = final.set_audio(final_audio)
+                        if final.audio:
+                            final_audio = CompositeAudioClip([final.audio, music_clip])
+                            final = final.set_audio(final_audio)
+                        else:
+                            final = final.set_audio(music_clip)
                     except Exception as e:
                         print(f"Error adding background music: {e}")
 
