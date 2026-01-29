@@ -287,5 +287,90 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_intro_outro(self):
+        print("Testing Editor Intro/Outro (Mocked)...")
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 5.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_text_clip = MagicMock()
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = MagicMock()
+
+        editor = Editor()
+        analysis_data = {"segments": [{"start": 0, "end": 5}]}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {}, intro_text="Intro", outro_text="Outro")
+
+            # Check if TextClip was called for Intro and Outro
+            # We expect at least 2 calls to TextClip (one for intro, one for outro)
+            self.assertTrue(self.mock_moviepy_editor.TextClip.call_count >= 2)
+
+            # Check concatenate was called with list of size 3 (intro, clip, outro)
+            call_args = self.mock_moviepy_editor.concatenate_videoclips.call_args
+            clips_passed = call_args[0][0]
+            self.assertEqual(len(clips_passed), 3)
+
+    def test_editor_zoom_and_filters(self):
+        print("Testing Editor Zoom and Filters (Mocked)...")
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+
+        mock_clip = MagicMock()
+        mock_clip.duration = 5.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Image Clip Mock
+        mock_img_clip = MagicMock()
+        mock_img_clip.set_start.return_value = mock_img_clip
+        mock_img_clip.set_duration.return_value = mock_img_clip
+        mock_img_clip.set_position.return_value = mock_img_clip
+        # Resize returns itself
+        mock_img_clip.resize.return_value = mock_img_clip
+        self.mock_moviepy_editor.ImageClip.return_value = mock_img_clip
+
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = MagicMock()
+
+        # Filter Mock
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_vfx.mirror_x.return_value = MagicMock()
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "graphics": [{"timestamp": 1, "duration": 2}]
+        }
+        graphic_paths = {0: "graphic.png"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths, visual_filter="mirror_x")
+
+            # Check Mirror X
+            mock_vfx.mirror_x.assert_called()
+
+            # Check Zoom (resize called twice? Once for height, once for zoom)
+            self.assertTrue(mock_img_clip.resize.call_count >= 2)
+
 if __name__ == '__main__':
     unittest.main()
