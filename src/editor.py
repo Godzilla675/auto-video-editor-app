@@ -84,7 +84,23 @@ class Editor:
         g_timestamps = [x[0] for x in sorted_graphics]
         
         graphics_reqs = analysis_data.get("graphics", [])
-        captions = analysis_data.get("captions", [])
+
+        # --- Pre-process Captions ---
+        # Optimize captions lookup by sorting and using sliding window
+        raw_captions = analysis_data.get("captions", [])
+        sorted_captions = []
+        for cap in raw_captions:
+            c_start = float(cap.get("start", 0))
+            c_end = float(cap.get("end", 0))
+            text = cap.get("text", "")
+            if text:
+                sorted_captions.append((c_start, c_end, text, cap))
+
+        # Sort by start time
+        sorted_captions.sort(key=lambda x: x[0])
+
+        n_captions = len(sorted_captions)
+        caption_idx = 0
 
         for seg in segments:
             start = float(seg.get("start", 0))
@@ -137,16 +153,21 @@ class Editor:
                                 print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
-            for cap in captions:
-                c_start = float(cap.get("start", 0))
-                c_end = float(cap.get("end", 0))
-                text = cap.get("text", "")
+            # Optimization: Skip captions that end before the segment starts
+            # Since segments are sorted by start time, caption_idx can only increase
+            while caption_idx < n_captions and sorted_captions[caption_idx][1] <= start:
+                caption_idx += 1
+
+            for i in range(caption_idx, n_captions):
+                c_start, c_end, text, cap = sorted_captions[i]
                 
-                if not text:
-                    continue
+                # Optimization: Stop if caption starts after segment ends
+                if c_start >= end:
+                    break
                 
-                # Check for overlap: caption ends after segment starts AND caption starts before segment ends
-                if c_end > start and c_start < end:
+                # Check for overlap: caption ends after segment starts
+                # (c_start < end is guaranteed by the break condition)
+                if c_end > start:
                     rel_start = max(0, c_start - start)
 
                     overlap_start = max(c_start, start)
