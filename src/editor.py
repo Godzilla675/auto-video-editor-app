@@ -20,6 +20,26 @@ class Editor:
         if im_binary:
             mp_config.change_settings({"IMAGEMAGICK_BINARY": im_binary})
 
+        self.image_cache = {}
+
+    def _get_image_clip(self, img_path: str, height: float) -> ImageClip:
+        """
+        Retrieves an ImageClip from cache or creates/resizes it if not cached.
+
+        Args:
+            img_path (str): Path to the image file.
+            height (float): Target height for resizing.
+
+        Returns:
+            ImageClip: The resized image clip.
+        """
+        key = (img_path, height)
+        if key not in self.image_cache:
+            # We don't catch exception here, let it propagate to the caller which has a try/except
+            clip = ImageClip(img_path).resize(height=height)
+            self.image_cache[key] = clip
+        return self.image_cache[key]
+
     def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4",
              music: Optional[str] = None, music_volume: float = 0.1, crossfade: float = 0.0,
              subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None) -> Optional[str]:
@@ -127,11 +147,11 @@ class Editor:
                         if duration > 0:
                             print(f"Adding graphic {img_path} at relative {rel_start}s with duration {duration}s")
                             try:
-                                img_clip = (ImageClip(img_path)
+                                base_clip = self._get_image_clip(img_path, sub.h * 0.8)
+                                img_clip = (base_clip
                                             .set_start(rel_start)
                                             .set_duration(duration)
-                                            .set_position("center")
-                                            .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                                            .set_position("center"))
                                 layers.append(img_clip)
                             except Exception as e:
                                 print(f"Failed to create ImageClip: {e}")
