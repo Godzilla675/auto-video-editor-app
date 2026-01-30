@@ -287,5 +287,129 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_intro_outro(self):
+        print("Testing Editor Intro/Outro (Mocked)...")
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 1920
+        mock_clip.h = 1080
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_color = MagicMock()
+        mock_color.set_duration.return_value = mock_color
+        self.mock_moviepy_editor.ColorClip.return_value = mock_color
+
+        mock_text = MagicMock()
+        mock_text.set_position.return_value = mock_text
+        mock_text.set_duration.return_value = mock_text
+        self.mock_moviepy_editor.TextClip.return_value = mock_text
+
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        editor = Editor()
+        analysis_data = {"segments": [{"start": 0, "end": 5}]}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {},
+                        intro_text="Intro", outro_text="Outro")
+
+            # Verify ColorClip called (for intro and outro background)
+            self.assertTrue(self.mock_moviepy_editor.ColorClip.called)
+
+            # Verify concatenate called with 3 clips (intro, segment, outro)
+            args = self.mock_moviepy_editor.concatenate_videoclips.call_args
+            clips_list = args[0][0]
+            self.assertEqual(len(clips_list), 3)
+
+    def test_editor_zoom_and_fade(self):
+        print("Testing Editor Zoom and Audio Fade (Mocked)...")
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Image Clip
+        mock_img_clip = MagicMock()
+        mock_img_clip.set_start.return_value = mock_img_clip
+        mock_img_clip.set_duration.return_value = mock_img_clip
+        mock_img_clip.set_position.return_value = mock_img_clip
+        mock_img_clip.resize.return_value = mock_img_clip # Chainable
+        self.mock_moviepy_editor.ImageClip.return_value = mock_img_clip
+
+        # Audio Clip
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.volumex.return_value = mock_audio
+        mock_audio.fx.return_value = mock_audio # Chainable
+        mock_audio.subclip.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+        mock_afx.audio_loop.return_value = mock_audio
+
+        editor = Editor()
+        analysis_data = {"segments": [{"start": 0, "end": 5}], "graphics": [{"timestamp": 1, "duration": 2}]}
+        graphic_paths = {0: "img.png"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths, music="music.mp3")
+
+            # Check zoom (resize called twice, second time with lambda)
+            self.assertTrue(mock_img_clip.resize.called)
+            self.assertGreaterEqual(mock_img_clip.resize.call_count, 2)
+
+            # Check audio fade
+            fx_calls = mock_audio.fx.call_args_list
+            has_fadein = any(call[0][0] == mock_afx.audio_fadein for call in fx_calls)
+            has_fadeout = any(call[0][0] == mock_afx.audio_fadeout for call in fx_calls)
+            self.assertTrue(has_fadein)
+            self.assertTrue(has_fadeout)
+
+    def test_editor_filters_extended(self):
+        print("Testing Editor Extended Filters (Mocked)...")
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_clip # Final clip
+
+        editor = Editor()
+        analysis_data = {"segments": [{"start": 0, "end": 5}]}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {}, visual_filter="mirror_x")
+            mock_vfx.mirror_x.assert_called()
+
+            editor.edit("dummy.mp4", analysis_data, {}, visual_filter="mirror_y")
+            mock_vfx.mirror_y.assert_called()
+
 if __name__ == '__main__':
     unittest.main()
