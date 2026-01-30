@@ -4,12 +4,49 @@ import requests
 import json
 import shutil
 import concurrent.futures
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from src.transcriber import Transcriber
 from src.analyzer import Analyzer
 from src.generator import Generator
 from src.editor import Editor
+
+def generate_graphics(graphics_reqs: List[Dict[str, Any]], generator: Generator) -> Dict[int, str]:
+    """
+    Generates graphics for the given requirements, deduplicating identical prompts.
+    """
+    graphic_paths: Dict[int, str] = {}
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        prompt_to_future = {}
+        # First pass: Submit unique prompts
+        for i, req in enumerate(graphics_reqs):
+            prompt = req.get("prompt")
+            if prompt and prompt not in prompt_to_future:
+                 future = executor.submit(generator.generate, prompt, filename_prefix=f"graphic_unique_{len(prompt_to_future)}")
+                 prompt_to_future[prompt] = future
+
+        # Collect results
+        prompt_to_path = {}
+        # Use future_to_prompt to track which future corresponds to which prompt
+        future_to_prompt = {f: p for p, f in prompt_to_future.items()}
+
+        for future in concurrent.futures.as_completed(prompt_to_future.values()):
+            prompt = future_to_prompt[future]
+            try:
+                path = future.result()
+                if path:
+                    prompt_to_path[prompt] = path
+            except Exception as e:
+                print(f"Error generating graphic for prompt '{prompt}': {e}")
+
+        # Final pass: populate graphic_paths
+        for i, req in enumerate(graphics_reqs):
+            prompt = req.get("prompt")
+            if prompt and prompt in prompt_to_path:
+                graphic_paths[i] = prompt_to_path[prompt]
+
+    return graphic_paths
 
 def download_video(url: str, filename: str = "input.mp4") -> Optional[str]:
     """
@@ -114,25 +151,8 @@ def main() -> None:
 
     # 5. Generate Graphics
     print("\n--- Step 3: Graphics Generation ---")
-    graphic_paths: Dict[int, str] = {}
     graphics_reqs = analysis_data.get("graphics", [])
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_index = {}
-        for i, req in enumerate(graphics_reqs):
-            prompt = req.get("prompt")
-            if prompt:
-                future = executor.submit(generator.generate, prompt, filename_prefix=f"graphic_{i}")
-                future_to_index[future] = i
-
-        for future in concurrent.futures.as_completed(future_to_index):
-            i = future_to_index[future]
-            try:
-                path = future.result()
-                if path:
-                    graphic_paths[i] = path
-            except Exception as e:
-                print(f"Error generating graphic {i}: {e}")
+    graphic_paths = generate_graphics(graphics_reqs, generator)
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
