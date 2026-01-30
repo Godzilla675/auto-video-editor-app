@@ -24,7 +24,7 @@ def download_video(url: str, filename: str = "input.mp4") -> Optional[str]:
     """
     print(f"Downloading video from {url}...")
     try:
-        with requests.get(url, stream=True) as r:
+        with requests.get(url, stream=True, timeout=30) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192): 
