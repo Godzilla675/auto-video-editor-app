@@ -48,7 +48,9 @@ def main() -> None:
     parser.add_argument("--music", help="Path or URL to background music file", default=None)
     parser.add_argument("--music-volume", help="Volume of background music (0.0-1.0)", type=float, default=0.1)
     parser.add_argument("--crossfade", help="Crossfade duration in seconds", type=float, default=0.0)
-    parser.add_argument("--filter", help="Visual filter to apply (black_white, invert_colors, painting)", default=None)
+    parser.add_argument("--filter", help="Visual filter to apply (black_white, invert_colors, painting, mirror_x, mirror_y)", default=None)
+    parser.add_argument("--intro-text", help="Text for intro title card", default=None)
+    parser.add_argument("--outro-text", help="Text for outro title card", default=None)
 
     # Subtitle arguments
     parser.add_argument("--font", help="Subtitle font", default="DejaVuSans")
@@ -147,7 +149,8 @@ def main() -> None:
 
     output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output,
                               music=music_path, music_volume=args.music_volume, crossfade=args.crossfade,
-                              subtitle_config=subtitle_config, visual_filter=args.filter)
+                              subtitle_config=subtitle_config, visual_filter=args.filter,
+                              intro_text=args.intro_text, outro_text=args.outro_text)
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
