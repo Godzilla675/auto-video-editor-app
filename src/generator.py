@@ -42,7 +42,7 @@ class Generator:
         max_retries = 5
         for i in range(max_retries):
             try:
-                response = requests.post(self.api_url, headers=self.headers, json=payload)
+                response = requests.post(self.api_url, headers=self.headers, json=payload, timeout=30)
 
                 if response.status_code == 200:
                     try:
@@ -61,14 +61,24 @@ class Generator:
                         return None
                 elif response.status_code == 503:
                     # Model loading
-                    wait_time = response.json().get('estimated_time', 20)
+                    try:
+                        wait_time = response.json().get('estimated_time', 20)
+                    except Exception:
+                        wait_time = 20
                     print(f"Model loading... retrying in {wait_time} seconds")
                     time.sleep(wait_time)
+                elif response.status_code in [500, 502, 504, 429]:
+                    print(f"Server error {response.status_code}, retrying...")
+                    time.sleep(2 * (i + 1))
                 else:
                     print(f"Error generating image: {response.status_code} - {response.text}")
                     return None
             except requests.RequestException as e:
                 print(f"Request failed: {e}")
-                return None
+                if i < max_retries - 1:
+                    time.sleep(2)
+                    continue
+                else:
+                    return None
         
         return None

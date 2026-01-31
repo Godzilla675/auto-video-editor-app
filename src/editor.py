@@ -86,6 +86,19 @@ class Editor:
         graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
 
+        # --- Pre-process Captions ---
+        # Sort by start time for optimization
+        sorted_captions = []
+        for cap in captions:
+            start_cap = float(cap.get("start", 0))
+            end_cap = float(cap.get("end", 0))
+            text = cap.get("text", "")
+            if text:
+                sorted_captions.append((start_cap, end_cap, text, cap))
+
+        sorted_captions.sort(key=lambda x: x[0])
+        c_timestamps = [x[0] for x in sorted_captions]
+
         for seg in segments:
             start = float(seg.get("start", 0))
             end = float(seg.get("end", video.duration))
@@ -137,16 +150,13 @@ class Editor:
                                 print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
-            for cap in captions:
-                c_start = float(cap.get("start", 0))
-                c_end = float(cap.get("end", 0))
-                text = cap.get("text", "")
-                
-                if not text:
-                    continue
-                
+            # Use bisect to find potential overlaps
+            c_idx_end = bisect.bisect_left(c_timestamps, end)
+
+            for c_start, c_end, text, cap in sorted_captions[:c_idx_end]:
                 # Check for overlap: caption ends after segment starts AND caption starts before segment ends
-                if c_end > start and c_start < end:
+                # We already know c_start < end (from bisect)
+                if c_end > start:
                     rel_start = max(0, c_start - start)
 
                     overlap_start = max(c_start, start)
@@ -224,7 +234,10 @@ class Editor:
                         music_clip = music_clip.volumex(music_volume)
 
                         # Mix
-                        final_audio = CompositeAudioClip([final.audio, music_clip])
+                        if final.audio:
+                            final_audio = CompositeAudioClip([final.audio, music_clip])
+                        else:
+                            final_audio = music_clip
                         final = final.set_audio(final_audio)
                     except Exception as e:
                         print(f"Error adding background music: {e}")
