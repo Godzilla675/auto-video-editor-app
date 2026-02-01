@@ -1,4 +1,4 @@
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, AudioFileClip, CompositeAudioClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, AudioFileClip, CompositeAudioClip, ColorClip
 import moviepy.video.fx.all as vfx
 import moviepy.audio.fx.all as afx
 import moviepy.config as mp_config
@@ -22,7 +22,8 @@ class Editor:
 
     def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4",
              music: Optional[str] = None, music_volume: float = 0.1, crossfade: float = 0.0,
-             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None) -> Optional[str]:
+             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None,
+             intro_text: Optional[str] = None, outro_text: Optional[str] = None) -> Optional[str]:
         """
         Edits the video based on the analysis data and generated graphics.
 
@@ -36,6 +37,8 @@ class Editor:
             crossfade (float): Duration of crossfade transition between clips.
             subtitle_config (Optional[Dict[str, Any]]): Configuration for subtitles (font, size, color, etc.).
             visual_filter (Optional[str]): Name of visual filter to apply (e.g., 'black_white').
+            intro_text (Optional[str]): Text for an intro slide.
+            outro_text (Optional[str]): Text for an outro slide.
 
         Returns:
             Optional[str]: The path to the output video, or None if editing fails.
@@ -48,7 +51,8 @@ class Editor:
             "fontsize": 40,
             "color": "white",
             "stroke_color": "black",
-            "stroke_width": 2
+            "stroke_width": 2,
+            "box_color": None
         }
         if subtitle_config:
             sub_conf.update(subtitle_config)
@@ -131,7 +135,12 @@ class Editor:
                                             .set_start(rel_start)
                                             .set_duration(duration)
                                             .set_position("center")
-                                            .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                                            .resize(height=sub.h * 0.8) # Resize to 80% of height
+                                            .crossfadein(0.5))
+                                # Apply Ken Burns effect (slow zoom)
+                                # Zoom from 1.0 to 1.05 over duration
+                                img_clip = img_clip.resize(lambda t: 1 + 0.05 * t)
+
                                 layers.append(img_clip)
                             except Exception as e:
                                 print(f"Failed to create ImageClip: {e}")
@@ -167,9 +176,21 @@ class Editor:
                                                   method='caption',
                                                   size=(sub.w * 0.9, None))
                                          .set_start(rel_start)
-                                         .set_duration(duration)
-                                         .set_position(('center', 'bottom')))
-                            layers.append(text_clip)
+                                         .set_duration(duration))
+
+                            if sub_conf["box_color"]:
+                                # Create a background box
+                                txt_w, txt_h = text_clip.size
+                                box = ColorClip(size=(int(txt_w * 1.1), int(txt_h * 1.1)),
+                                                color=sub_conf["box_color"],
+                                                duration=duration)
+                                # Composite text over box
+                                final_text = CompositeVideoClip([box, text_clip.set_position('center').set_start(0)],
+                                                                size=box.size).set_position(('center', 'bottom')).set_start(rel_start)
+                                layers.append(final_text)
+                            else:
+                                layers.append(text_clip.set_position(('center', 'bottom')))
+
                         except Exception as e:
                             print(f"Failed to create TextClip. This is often due to ImageMagick configuration.")
                             print(f"Details: {e}")
@@ -185,6 +206,22 @@ class Editor:
         # Concatenate
         if clips:
             print(f"Concatenating {len(clips)} clips...")
+
+            # Add Intro
+            if intro_text:
+                print("Adding intro slide...")
+                intro_clip = TextClip(intro_text, fontsize=50, color='white', font='Arial', size=video.size)
+                intro_bg = ColorClip(size=video.size, color=(0,0,0), duration=3)
+                intro_final = CompositeVideoClip([intro_bg, intro_clip.set_position('center').set_duration(3)]).set_duration(3)
+                clips.insert(0, intro_final)
+
+            # Add Outro
+            if outro_text:
+                print("Adding outro slide...")
+                outro_clip = TextClip(outro_text, fontsize=50, color='white', font='Arial', size=video.size)
+                outro_bg = ColorClip(size=video.size, color=(0,0,0), duration=3)
+                outro_final = CompositeVideoClip([outro_bg, outro_clip.set_position('center').set_duration(3)]).set_duration(3)
+                clips.append(outro_final)
 
             # Apply crossfade if requested
             padding = 0
@@ -206,7 +243,10 @@ class Editor:
                         final = vfx.invert_colors(final)
                     elif visual_filter == 'painting':
                         final = vfx.painting(final)
-                    # Add more filters as needed
+                    elif visual_filter == 'mirror_x':
+                        final = vfx.mirror_x(final)
+                    elif visual_filter == 'mirror_y':
+                        final = vfx.mirror_y(final)
 
                 # Apply Background Music
                 if music and os.path.exists(music):
@@ -220,8 +260,10 @@ class Editor:
                         else:
                             music_clip = music_clip.subclip(0, final.duration)
 
-                        # Adjust volume
+                        # Apply fade in/out and volume
                         music_clip = music_clip.volumex(music_volume)
+                        music_clip = afx.audio_fadein(music_clip, 2.0)
+                        music_clip = afx.audio_fadeout(music_clip, 2.0)
 
                         # Mix
                         final_audio = CompositeAudioClip([final.audio, music_clip])

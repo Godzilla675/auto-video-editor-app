@@ -287,5 +287,83 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_intro_outro_box(self):
+        print("Testing Editor Intro/Outro/Box (Mocked)...")
+
+        # Mock ColorClip BEFORE reload so it gets picked up
+        mock_color_clip = MagicMock()
+        mock_color_clip.set_start.return_value = mock_color_clip
+        self.mock_moviepy_editor.ColorClip = MagicMock(return_value=mock_color_clip)
+
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Manually align
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        # For Ken Burns effect, resize is called with a lambda
+        mock_clip.resize.return_value = mock_clip
+        mock_clip.crossfadein.return_value = mock_clip
+        mock_clip.set_start.return_value = mock_clip
+        mock_clip.set_duration.return_value = mock_clip
+        mock_clip.set_position.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+        self.mock_moviepy_editor.ImageClip.return_value = mock_clip # Reusing mock_clip for image
+
+        # Mock TextClip
+        mock_text_clip = MagicMock()
+        mock_text_clip.size = (50, 20)
+        mock_text_clip.set_position.return_value = mock_text_clip
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        mock_text_clip.set_start.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        # Mock CompositeVideoClip
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        mock_comp.set_position.return_value = mock_comp # For box composite
+        mock_comp.set_start.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "captions": [{"start": 0, "end": 2, "text": "Sub"}],
+            "graphics": [{"timestamp": 3, "duration": 2}]
+        }
+        graphic_paths = {0: "graphic.png"}
+        subtitle_config = {"box_color": "black"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths,
+                        intro_text="Intro", outro_text="Outro",
+                        subtitle_config=subtitle_config)
+
+            # Verify Intro/Outro were created
+            # TextClip should be called for "Intro", "Outro" and "Sub"
+            # We can check call args
+            text_calls = [c[0][0] for c in self.mock_moviepy_editor.TextClip.call_args_list]
+            self.assertIn("Intro", text_calls)
+            self.assertIn("Outro", text_calls)
+            self.assertIn("Sub", text_calls)
+
+            # Verify ColorClip used for Intro/Outro/Box
+            self.assertTrue(self.mock_moviepy_editor.ColorClip.called)
+
+            # Verify Zoom (resize with lambda)
+            self.assertTrue(mock_clip.resize.called)
+
 if __name__ == '__main__':
     unittest.main()
