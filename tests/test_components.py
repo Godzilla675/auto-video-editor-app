@@ -287,5 +287,76 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_intro_outro_and_filters(self):
+        print("Testing Intro/Outro and Filters (Mocked)...")
+
+        # Reload to capture changes
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Align mocks
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Setup mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        mock_clip.rotate.return_value = mock_clip # For rotate filter
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = MagicMock()
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_clip
+
+        # Mock ColorClip (now imported)
+        mock_color_clip = MagicMock()
+        mock_color_clip.set_opacity.return_value = mock_color_clip
+        mock_color_clip.set_start.return_value = mock_color_clip
+        mock_color_clip.set_duration.return_value = mock_color_clip
+        mock_color_clip.set_position.return_value = mock_color_clip
+        self.mock_moviepy_editor.ColorClip.return_value = mock_color_clip
+
+        # Mock TextClip
+        mock_text_clip = MagicMock()
+        mock_text_clip.set_position.return_value = mock_text_clip
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        mock_text_clip.set_start.return_value = mock_text_clip
+        mock_text_clip.size = (50, 20)
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        editor = Editor()
+        analysis_data = {"segments": [{"start": 0, "end": 5}]}
+        subtitle_config = {"box_color": "black", "box_opacity": 0.5}
+
+        # Test Intro/Outro
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {},
+                        intro_text="Intro", outro_text="Outro",
+                        visual_filter="rotate", subtitle_config=subtitle_config)
+
+            # Check Title Card creation (TextClip called for Intro and Outro)
+            # TextClip calls: 1 for intro, 1 for outro. (No captions in this run)
+            # Actually, we should check if ColorClip was called for background
+            self.assertTrue(self.mock_moviepy_editor.ColorClip.called)
+
+            # Check Filter
+            mock_clip.rotate.assert_called_with(90)
+
+        # Test Subtitle Box
+        analysis_data["captions"] = [{"start": 1, "end": 2, "text": "Sub"}]
+        self.mock_moviepy_editor.ColorClip.reset_mock()
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {}, subtitle_config=subtitle_config)
+
+            # ColorClip should be called for the subtitle box
+            self.assertTrue(self.mock_moviepy_editor.ColorClip.called)
+            # Verify opacity set
+            mock_color_clip.set_opacity.assert_called_with(0.5)
+
 if __name__ == '__main__':
     unittest.main()
