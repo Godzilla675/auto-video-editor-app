@@ -118,21 +118,30 @@ def main() -> None:
     graphics_reqs = analysis_data.get("graphics", [])
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_index = {}
+        # Deduplicate requests by prompt
+        prompt_to_future = {}
+        future_to_indices = {}
+
         for i, req in enumerate(graphics_reqs):
             prompt = req.get("prompt")
             if prompt:
-                future = executor.submit(generator.generate, prompt, filename_prefix=f"graphic_{i}")
-                future_to_index[future] = i
+                if prompt in prompt_to_future:
+                    future = prompt_to_future[prompt]
+                    future_to_indices[future].append(i)
+                else:
+                    future = executor.submit(generator.generate, prompt, filename_prefix=f"graphic_{i}")
+                    prompt_to_future[prompt] = future
+                    future_to_indices[future] = [i]
 
-        for future in concurrent.futures.as_completed(future_to_index):
-            i = future_to_index[future]
+        for future in concurrent.futures.as_completed(future_to_indices):
+            indices = future_to_indices[future]
             try:
                 path = future.result()
                 if path:
-                    graphic_paths[i] = path
+                    for i in indices:
+                        graphic_paths[i] = path
             except Exception as e:
-                print(f"Error generating graphic {i}: {e}")
+                print(f"Error generating graphic for indices {indices}: {e}")
 
     # 6. Edit
     print("\n--- Step 4: Editing ---")
