@@ -189,10 +189,20 @@ class Editor:
             # Apply crossfade if requested
             padding = 0
             if crossfade > 0 and len(clips) > 1:
-                print(f"Applying crossfade of {crossfade}s")
-                # Apply crossfadein to all clips except the first one
-                clips = [clip.crossfadein(crossfade) if i > 0 else clip for i, clip in enumerate(clips)]
-                padding = -crossfade
+                # Ensure crossfade is not larger than any clip's duration
+                min_duration = min(c.duration for c in clips)
+                # Cap crossfade to be slightly less than the shortest clip to avoid issues
+                max_crossfade = max(0, min_duration - 0.1)
+
+                if crossfade > max_crossfade:
+                    print(f"Adjusting crossfade from {crossfade}s to {max_crossfade}s (limited by clip duration)")
+                    crossfade = max_crossfade
+
+                if crossfade > 0:
+                    print(f"Applying crossfade of {crossfade}s")
+                    # Apply crossfadein to all clips except the first one
+                    clips = [clip.crossfadein(crossfade) if i > 0 else clip for i, clip in enumerate(clips)]
+                    padding = -crossfade
 
             try:
                 final = concatenate_videoclips(clips, method="compose", padding=padding)
@@ -224,8 +234,11 @@ class Editor:
                         music_clip = music_clip.volumex(music_volume)
 
                         # Mix
-                        final_audio = CompositeAudioClip([final.audio, music_clip])
-                        final = final.set_audio(final_audio)
+                        if final.audio:
+                            final_audio = CompositeAudioClip([final.audio, music_clip])
+                            final = final.set_audio(final_audio)
+                        else:
+                            final = final.set_audio(music_clip)
                     except Exception as e:
                         print(f"Error adding background music: {e}")
 
