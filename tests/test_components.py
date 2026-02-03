@@ -32,12 +32,18 @@ from src.generator import Generator
 from src.editor import Editor
 import importlib
 import src.editor
+import src.analyzer
+import src.generator
+import src.transcriber
 
 class TestComponents(unittest.TestCase):
     
     def setUp(self):
-        # Reload src.editor to ensure it uses the current global mocks
+        # Reload modules to ensure they use the current global mocks
         importlib.reload(src.editor)
+        importlib.reload(src.analyzer)
+        importlib.reload(src.generator)
+        importlib.reload(src.transcriber)
 
         # Reset mocks if needed, or setup common return values
         self.mock_cv2 = sys.modules["cv2"]
