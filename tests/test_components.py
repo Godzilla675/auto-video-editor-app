@@ -50,6 +50,12 @@ class TestComponents(unittest.TestCase):
 
         self.mock_openai = sys.modules["openai"]
         self.mock_requests = sys.modules["requests"]
+        self.mock_requests.post.side_effect = None # Clear side effects
+
+        # Fix RequestException being a Mock
+        class MockRequestException(Exception): pass
+        self.mock_requests.RequestException = MockRequestException
+
         self.mock_moviepy_editor = sys.modules["moviepy.editor"]
         self.mock_whisper = sys.modules["whisper"]
         self.mock_pil = sys.modules["PIL"]
@@ -286,6 +292,119 @@ class TestComponents(unittest.TestCase):
             call_args = self.mock_moviepy_editor.TextClip.call_args
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
+
+    def test_editor_extended_features(self):
+        print("Testing Editor Extended Features (Mocked)...")
+        # Ensure mocks are ready
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Mock objects
+        mock_clip = MagicMock()
+        mock_clip.duration = 5.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        mock_final.duration = 20.0 # Set duration to avoid comparison errors
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        editor = Editor()
+        analysis_data = {"segments": [{"start": 0, "end": 5}]}
+
+        # Test 1: New Filters (mirror_x)
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {}, visual_filter="mirror_x")
+            mock_vfx.mirror_x.assert_called()
+
+        # Test 2: Intro/Outro
+        with patch('os.path.exists', return_value=True):
+            self.mock_moviepy_editor.TextClip.reset_mock()
+            editor.edit("dummy.mp4", analysis_data, {}, intro_text="Intro", outro_text="Outro")
+            # Should create TextClips for intro and outro
+            # We can check call args to verify text
+            calls = self.mock_moviepy_editor.TextClip.call_args_list
+            texts = [c[0][0] for c in calls]
+            self.assertIn("Intro", texts)
+            self.assertIn("Outro", texts)
+
+        # Test 3: Subtitle Box
+        analysis_data_cap = {"segments": [{"start": 0, "end": 5}], "captions": [{"start": 0, "end": 2, "text": "Hi"}]}
+
+        with patch('os.path.exists', return_value=True):
+            # Patch explicitly in src.editor namespace to avoid reload issues
+            with patch('src.editor.TextClip') as mock_tc_cls, \
+                 patch('src.editor.ColorClip') as mock_cc_cls:
+
+                # Setup TextClip instance
+                mock_text_instance = MagicMock()
+                mock_text_instance.size = (100, 50)
+                mock_text_instance.set_position.return_value = mock_text_instance
+                mock_text_instance.set_start.return_value = mock_text_instance
+                mock_text_instance.set_duration.return_value = mock_text_instance
+
+                mock_tc_cls.return_value = mock_text_instance
+
+                # Setup ColorClip instance
+                mock_cc_instance = MagicMock()
+                mock_cc_instance.set_opacity.return_value = mock_cc_instance
+                mock_cc_instance.set_duration.return_value = mock_cc_instance
+                mock_cc_instance.size = (120, 60)
+                mock_cc_cls.return_value = mock_cc_instance
+
+                editor.edit("dummy.mp4", analysis_data_cap, {},
+                            subtitle_config={"box_color": "black", "box_opacity": 0.5})
+
+                mock_cc_cls.assert_called()
+
+        # Test 4: Audio Fade In/Out
+        mock_audio = MagicMock()
+        mock_audio.duration = 10.0
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+        mock_afx.audio_fadein.return_value = mock_audio
+        mock_afx.audio_fadeout.return_value = mock_audio
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {}, music="music.mp3")
+            mock_afx.audio_fadein.assert_called()
+            mock_afx.audio_fadeout.assert_called()
+
+    def test_generator_429_retry(self):
+        print("Testing Generator 429 Retry (Mocked)...")
+
+        # First call: 429
+        mock_response_429 = MagicMock()
+        mock_response_429.status_code = 429
+        mock_response_429.headers = {"Retry-After": "1"}
+
+        # Second call: 200
+        mock_response_200 = MagicMock()
+        mock_response_200.status_code = 200
+        mock_response_200.content = b'fakeimagebytes'
+
+        self.mock_requests.post.side_effect = [mock_response_429, mock_response_200]
+
+        mock_img = MagicMock()
+        self.mock_pil.Image.open.return_value = mock_img
+
+        with patch('os.path.exists', return_value=True):
+            with patch('os.makedirs'):
+                with patch('time.sleep') as mock_sleep: # Mock sleep to save time
+                    g = Generator(api_token="token")
+                    path = g.generate("prompt")
+
+                    self.assertIsNotNone(path)
+                    mock_sleep.assert_called_with(1)
+                    self.assertEqual(self.mock_requests.post.call_count, 2)
 
 if __name__ == '__main__':
     unittest.main()
