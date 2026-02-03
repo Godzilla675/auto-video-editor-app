@@ -59,6 +59,10 @@ class Generator:
                     except Exception as e:
                         print(f"Error saving image: {e}")
                         return None
+                elif response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", 30))
+                    print(f"Rate limit exceeded... retrying in {retry_after} seconds")
+                    time.sleep(retry_after)
                 elif response.status_code == 503:
                     # Model loading
                     wait_time = response.json().get('estimated_time', 20)
