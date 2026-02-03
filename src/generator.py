@@ -61,14 +61,30 @@ class Generator:
                         return None
                 elif response.status_code == 503:
                     # Model loading
-                    wait_time = response.json().get('estimated_time', 20)
+                    try:
+                        wait_time = response.json().get('estimated_time', 20)
+                    except Exception:
+                        wait_time = 20
                     print(f"Model loading... retrying in {wait_time} seconds")
+                    time.sleep(wait_time)
+                elif response.status_code == 429:
+                    # Too Many Requests
+                    retry_after = response.headers.get("Retry-After")
+                    try:
+                        wait_time = int(retry_after) if retry_after else 20
+                    except ValueError:
+                        wait_time = 20
+                    print(f"Rate limited... retrying in {wait_time} seconds")
+                    time.sleep(wait_time)
+                elif response.status_code in [500, 502, 504]:
+                    wait_time = 5 * (i + 1)
+                    print(f"Server error {response.status_code}... retrying in {wait_time} seconds")
                     time.sleep(wait_time)
                 else:
                     print(f"Error generating image: {response.status_code} - {response.text}")
                     return None
             except requests.RequestException as e:
                 print(f"Request failed: {e}")
-                return None
+                time.sleep(5)
         
         return None
