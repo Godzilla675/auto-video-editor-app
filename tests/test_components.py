@@ -176,7 +176,10 @@ class TestComponents(unittest.TestCase):
         self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
 
         # Mock TextClip
-        self.mock_moviepy_editor.TextClip.return_value = MagicMock()
+        mock_text_clip = MagicMock()
+        mock_text_clip.size = (100, 50)
+        mock_text_clip.set_position.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
         # Mock ImageClip
         self.mock_moviepy_editor.ImageClip.return_value = MagicMock()
         # Mock CompositeVideoClip
@@ -275,6 +278,7 @@ class TestComponents(unittest.TestCase):
         # Re-run with caption to test subtitle config
         analysis_data["captions"] = [{"start": 0, "end": 2, "text": "Test"}]
         mock_text_clip = MagicMock()
+        mock_text_clip.size = (100, 50)
         mock_text_clip.set_start.return_value = mock_text_clip
         mock_text_clip.set_duration.return_value = mock_text_clip
         mock_text_clip.set_position.return_value = mock_text_clip
@@ -286,6 +290,108 @@ class TestComponents(unittest.TestCase):
             call_args = self.mock_moviepy_editor.TextClip.call_args
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
+
+    def test_editor_enhanced_features(self):
+        print("Testing Editor Enhanced Features (Mocked)...")
+        # Reload and setup mocks
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Mocks
+        mock_clip = MagicMock()
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.duration = 10.0
+        mock_clip.subclip.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        # Mock TextClip / ColorClip / CompositeVideoClip
+        mock_text_clip = MagicMock()
+        mock_text_clip.size = (100, 50)
+        mock_text_clip.set_position.return_value = mock_text_clip
+        mock_text_clip.set_duration.return_value = mock_text_clip
+        self.mock_moviepy_editor.TextClip.return_value = mock_text_clip
+
+        mock_color_clip = MagicMock()
+        mock_color_clip.set_opacity.return_value = mock_color_clip
+        mock_color_clip.set_position.return_value = mock_color_clip
+        self.mock_moviepy_editor.ColorClip.return_value = mock_color_clip
+
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        mock_comp.set_start.return_value = mock_comp
+        mock_comp.set_position.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        mock_final.duration = 20.0
+        mock_final.set_audio.return_value = mock_final
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        mock_audio = MagicMock()
+        mock_audio.duration = 5.0
+        mock_audio.volumex.return_value = mock_audio
+        mock_audio.subclip.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+        mock_afx.audio_loop.return_value = mock_audio
+        mock_afx.audio_fadein.return_value = mock_audio
+        mock_afx.audio_fadeout.return_value = mock_audio
+
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_vfx.rotate.return_value = mock_final
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "captions": [{"start": 1, "end": 4, "text": "Sub"}],
+            "graphics": [{"timestamp": 2, "duration": 2}] # Graphic to test zoom
+        }
+
+        # Mock ImageClip for graphics
+        mock_img_clip = MagicMock()
+        mock_img_clip.set_start.return_value = mock_img_clip
+        mock_img_clip.set_duration.return_value = mock_img_clip
+        mock_img_clip.set_position.return_value = mock_img_clip
+        mock_img_clip.resize.return_value = mock_img_clip # Chainable resize
+        self.mock_moviepy_editor.ImageClip.return_value = mock_img_clip
+
+        subtitle_config = {"box_opacity": 0.5, "box_color": "blue"}
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {0: "g.png"},
+                        visual_filter="rotate_90",
+                        intro_text="Intro", outro_text="Outro",
+                        subtitle_config=subtitle_config,
+                        music="music.mp3")
+
+            # 1. Check Filters
+            mock_vfx.rotate.assert_called_with(mock_final, angle=90)
+
+            # 2. Check Intro/Outro creation
+            # TextClip should be called for intro, outro, and caption
+            # We can check specific calls or just count
+            # Intro/Outro use specific font/color settings in _create_title_card
+
+            # 3. Check Caption Background
+            self.mock_moviepy_editor.ColorClip.assert_called() # Should be called for box creation
+            # Verify subtitle composite creation
+            # CompositeVideoClip([box, text_clip], use_bgclip=False)
+
+            # 4. Check Audio Fades
+            mock_afx.audio_fadein.assert_called_with(mock_audio, 2.0)
+            mock_afx.audio_fadeout.assert_called_with(mock_audio, 2.0)
+
+            # 5. Check Zoom
+            # ImageClip resize called twice (height and lambda)
+            # mock_img_clip.resize.call_count should be at least 2
+            self.assertTrue(mock_img_clip.resize.call_count >= 2)
 
 if __name__ == '__main__':
     unittest.main()

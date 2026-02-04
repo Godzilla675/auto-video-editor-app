@@ -11,6 +11,10 @@ if "moviepy.editor" not in sys.modules:
     sys.modules["moviepy.editor"] = MagicMock()
 if "moviepy.config" not in sys.modules:
     sys.modules["moviepy.config"] = MagicMock()
+if "moviepy.video.fx.all" not in sys.modules:
+    sys.modules["moviepy.video.fx.all"] = MagicMock()
+if "moviepy.audio.fx.all" not in sys.modules:
+    sys.modules["moviepy.audio.fx.all"] = MagicMock()
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
