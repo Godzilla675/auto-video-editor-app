@@ -86,6 +86,16 @@ class Editor:
         graphics_reqs = analysis_data.get("graphics", [])
         captions = analysis_data.get("captions", [])
 
+        # --- Optimize Captions Lookup ---
+        # Sort by start time for efficient range query
+        sorted_captions = []
+        for cap in captions:
+            t = float(cap.get("start", 0))
+            sorted_captions.append((t, cap))
+
+        sorted_captions.sort(key=lambda x: x[0])
+        c_timestamps = [x[0] for x in sorted_captions]
+
         for seg in segments:
             start = float(seg.get("start", 0))
             end = float(seg.get("end", video.duration))
@@ -137,8 +147,11 @@ class Editor:
                                 print(f"Failed to create ImageClip: {e}")
 
             # --- Captions ---
-            for cap in captions:
-                c_start = float(cap.get("start", 0))
+            # Only check captions that start before this segment ends
+            idx_end = bisect.bisect_left(c_timestamps, end)
+
+            for i in range(idx_end):
+                c_start, cap = sorted_captions[i]
                 c_end = float(cap.get("end", 0))
                 text = cap.get("text", "")
                 
@@ -224,8 +237,11 @@ class Editor:
                         music_clip = music_clip.volumex(music_volume)
 
                         # Mix
-                        final_audio = CompositeAudioClip([final.audio, music_clip])
-                        final = final.set_audio(final_audio)
+                        if final.audio:
+                            final_audio = CompositeAudioClip([final.audio, music_clip])
+                            final = final.set_audio(final_audio)
+                        else:
+                            final = final.set_audio(music_clip)
                     except Exception as e:
                         print(f"Error adding background music: {e}")
 
