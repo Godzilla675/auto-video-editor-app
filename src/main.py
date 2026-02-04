@@ -48,7 +48,11 @@ def main() -> None:
     parser.add_argument("--music", help="Path or URL to background music file", default=None)
     parser.add_argument("--music-volume", help="Volume of background music (0.0-1.0)", type=float, default=0.1)
     parser.add_argument("--crossfade", help="Crossfade duration in seconds", type=float, default=0.0)
-    parser.add_argument("--filter", help="Visual filter to apply (black_white, invert_colors, painting)", default=None)
+    parser.add_argument("--filter", help="Visual filter to apply (black_white, invert_colors, painting, rotate_90, rotate_180, mirror_x, mirror_y)", default=None)
+
+    # Intro/Outro arguments
+    parser.add_argument("--intro-text", help="Text for the intro title card", default=None)
+    parser.add_argument("--outro-text", help="Text for the outro title card", default=None)
 
     # Subtitle arguments
     parser.add_argument("--font", help="Subtitle font", default="DejaVuSans")
@@ -56,6 +60,8 @@ def main() -> None:
     parser.add_argument("--color", help="Subtitle color", default="white")
     parser.add_argument("--stroke_color", help="Subtitle stroke color", default="black")
     parser.add_argument("--stroke_width", help="Subtitle stroke width", type=int, default=2)
+    parser.add_argument("--box-color", help="Subtitle background box color", default="black")
+    parser.add_argument("--box-opacity", help="Subtitle background box opacity (0.0-1.0)", type=float, default=0.5)
     parser.add_argument("--assets-dir", help="Directory to save generated assets", default="generated_images")
     parser.add_argument("--model", help="Gemini model to use", default="gemini-3-pro-preview")
 
@@ -142,12 +148,15 @@ def main() -> None:
         "fontsize": args.fontsize,
         "color": args.color,
         "stroke_color": args.stroke_color,
-        "stroke_width": args.stroke_width
+        "stroke_width": args.stroke_width,
+        "box_color": args.box_color,
+        "box_opacity": args.box_opacity
     }
 
     output_path = editor.edit(video_path, analysis_data, graphic_paths, output_path=args.output,
                               music=music_path, music_volume=args.music_volume, crossfade=args.crossfade,
-                              subtitle_config=subtitle_config, visual_filter=args.filter)
+                              subtitle_config=subtitle_config, visual_filter=args.filter,
+                              intro_text=args.intro_text, outro_text=args.outro_text)
     
     if output_path:
         print(f"\nSuccess! Final video available at: {output_path}")
