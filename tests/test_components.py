@@ -26,18 +26,20 @@ from unittest.mock import patch
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.transcriber import Transcriber
-from src.analyzer import Analyzer
-from src.generator import Generator
-from src.editor import Editor
-import importlib
+import src.transcriber
+import src.analyzer
+import src.generator
 import src.editor
+import importlib
 
 class TestComponents(unittest.TestCase):
     
     def setUp(self):
-        # Reload src.editor to ensure it uses the current global mocks
+        # Reload modules to ensure they use the current global mocks
         importlib.reload(src.editor)
+        importlib.reload(src.generator)
+        importlib.reload(src.analyzer)
+        importlib.reload(src.transcriber)
 
         # Reset mocks if needed, or setup common return values
         self.mock_cv2 = sys.modules["cv2"]
@@ -60,7 +62,7 @@ class TestComponents(unittest.TestCase):
         mock_model.transcribe.return_value = {"text": "hello", "segments": []}
         self.mock_whisper.load_model.return_value = mock_model
         
-        t = Transcriber(model_size="base")
+        t = src.transcriber.Transcriber(model_size="base")
         with patch('os.path.exists', return_value=True):
             res = t.transcribe("dummy.mp4")
             self.assertEqual(res["text"], "hello")
@@ -77,7 +79,7 @@ class TestComponents(unittest.TestCase):
         self.mock_openai.OpenAI.return_value = mock_client
         
         with patch('os.path.exists', return_value=True):
-            a = Analyzer(api_key="key")
+            a = src.analyzer.Analyzer(api_key="key")
             res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
             self.assertIsNotNone(res)
             self.assertIn("segments", res)
@@ -92,7 +94,7 @@ class TestComponents(unittest.TestCase):
         self.mock_openai.OpenAI.return_value = mock_client
 
         with patch('os.path.exists', return_value=True):
-            a = Analyzer(api_key="key")
+            a = src.analyzer.Analyzer(api_key="key")
             res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
             self.assertIsNone(res)
 
@@ -107,7 +109,7 @@ class TestComponents(unittest.TestCase):
         self.mock_openai.OpenAI.return_value = mock_client
 
         with patch('os.path.exists', return_value=True):
-            a = Analyzer(api_key="key")
+            a = src.analyzer.Analyzer(api_key="key")
             res = a.analyze("dummy.mp4", {"text": "hi", "segments": []})
             self.assertIsNotNone(res)
             self.assertIn("segments", res)
@@ -125,7 +127,7 @@ class TestComponents(unittest.TestCase):
         
         with patch('os.path.exists', return_value=True):
             with patch('os.makedirs'):
-                g = Generator(api_token="token")
+                g = src.generator.Generator(api_token="token")
                 path = g.generate("prompt")
                 self.assertIsNotNone(path)
                 mock_img.save.assert_called()
@@ -140,7 +142,7 @@ class TestComponents(unittest.TestCase):
 
         with patch('os.path.exists', return_value=True):
             with patch('os.makedirs'):
-                g = Generator(api_token="token")
+                g = src.generator.Generator(api_token="token")
                 path = g.generate("prompt")
                 self.assertIsNone(path)
 
@@ -158,7 +160,7 @@ class TestComponents(unittest.TestCase):
         custom_dir = "my_uploads"
         with patch('os.path.exists', return_value=False): # Force makedirs
             with patch('os.makedirs') as mock_makedirs:
-                g = Generator(api_token="token", output_dir=custom_dir)
+                g = src.generator.Generator(api_token="token", output_dir=custom_dir)
                 mock_makedirs.assert_called_with(custom_dir)
 
                 path = g.generate("prompt")
@@ -188,7 +190,7 @@ class TestComponents(unittest.TestCase):
         mock_final = MagicMock()
         self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
 
-        editor = Editor()
+        editor = src.editor.Editor()
         analysis_data = {
             "segments": [{"start": 0, "end": 5}],
             "captions": [{"start": 0, "end": 2, "text": "Hello"}],
@@ -208,7 +210,6 @@ class TestComponents(unittest.TestCase):
         import importlib
         import src.editor
         importlib.reload(src.editor)
-        from src.editor import Editor
 
         # Manually align the module's imported vfx/afx with our global mocks
         # This is necessary because re-importing submodules of mocked packages can be inconsistent
@@ -248,7 +249,7 @@ class TestComponents(unittest.TestCase):
         mock_afx = sys.modules["moviepy.audio.fx.all"]
         mock_afx.audio_loop.return_value = mock_audio
 
-        editor = Editor()
+        editor = src.editor.Editor()
         # 2 segments to trigger crossfade logic
         analysis_data = {
             "segments": [{"start": 0, "end": 5}, {"start": 5, "end": 10}],
