@@ -287,5 +287,107 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_enhanced(self):
+        print("Testing Editor Enhanced Features (Mocked)...")
+
+        # Setup mocks BEFORE reload so they are captured correctly by import
+
+        # Mock ColorClip (for title card and subtitles)
+        mock_color_clip = MagicMock()
+        mock_color_clip.set_opacity.return_value = mock_color_clip
+        mock_color_clip.set_start.return_value = mock_color_clip
+        mock_color_clip.set_duration.return_value = mock_color_clip
+        mock_color_clip.set_position.return_value = mock_color_clip
+
+        # Assign to the global mock module
+        self.mock_moviepy_editor.ColorClip = MagicMock(return_value=mock_color_clip)
+
+        # Reload to ensure fresh mocks
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Align mocks
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Setup mocks
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 1920
+        mock_clip.h = 1080
+        mock_clip.subclip.return_value = mock_clip
+        mock_clip.crossfadein.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_comp = MagicMock()
+        mock_comp.set_duration.return_value = mock_comp
+        self.mock_moviepy_editor.CompositeVideoClip.return_value = mock_comp
+
+        mock_final = MagicMock()
+        mock_final.set_audio.return_value = mock_final
+        mock_final.duration = 30.0 # Set duration to avoid comparison errors
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+
+        mock_audio = MagicMock()
+        mock_audio.duration = 20.0
+        mock_audio.volumex.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        # Mock FX
+        mock_vfx = sys.modules["moviepy.video.fx.all"]
+        mock_vfx.rotate.return_value = mock_final
+
+        mock_afx = sys.modules["moviepy.audio.fx.all"]
+        mock_afx.audio_fadein.return_value = mock_audio
+        mock_afx.audio_fadeout.return_value = mock_audio
+        mock_afx.audio_loop.return_value = mock_audio
+
+        # Mock ImageClip
+        mock_img_clip = MagicMock()
+        mock_img_clip.set_start.return_value = mock_img_clip
+        mock_img_clip.set_duration.return_value = mock_img_clip
+        mock_img_clip.set_position.return_value = mock_img_clip
+        mock_img_clip.resize.return_value = mock_img_clip
+        mock_img_clip.crossfadein.return_value = mock_img_clip
+        self.mock_moviepy_editor.ImageClip.return_value = mock_img_clip
+
+        editor = Editor()
+
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "captions": [{"start": 1, "end": 4, "text": "Sub"}],
+            "graphics": [{"timestamp": 2, "duration": 2}]
+        }
+        graphic_paths = {0: "graphic.png"}
+
+        subtitle_config = {
+            "box_color": "black",
+            "box_opacity": 0.7
+        }
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, graphic_paths,
+                        music="music.mp3", visual_filter="rotate_90",
+                        intro_text="Intro", outro_text="Outro",
+                        subtitle_config=subtitle_config)
+
+            # Check Intro/Outro (ColorClip creation)
+            # Called for Intro, Outro, and Subtitle Box
+            self.assertTrue(self.mock_moviepy_editor.ColorClip.called)
+
+            # Check Graphics Effects
+            mock_img_clip.crossfadein.assert_called_with(0.5)
+            # resize is called twice (once for height, once for zoom)
+            self.assertTrue(mock_img_clip.resize.call_count >= 2)
+
+            # Check Music Fading
+            mock_afx.audio_fadein.assert_called()
+            mock_afx.audio_fadeout.assert_called()
+
+            # Check Rotate Filter
+            mock_vfx.rotate.assert_called_with(mock_final, 90)
+
 if __name__ == '__main__':
     unittest.main()
