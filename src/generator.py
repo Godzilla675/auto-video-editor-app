@@ -61,7 +61,10 @@ class Generator:
                         return None
                 elif response.status_code == 503:
                     # Model loading
-                    wait_time = response.json().get('estimated_time', 20)
+                    try:
+                        wait_time = response.json().get('estimated_time', 20)
+                    except Exception:
+                        wait_time = 20
                     print(f"Model loading... retrying in {wait_time} seconds")
                     time.sleep(wait_time)
                 else:
