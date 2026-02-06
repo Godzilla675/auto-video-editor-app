@@ -1,4 +1,4 @@
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, AudioFileClip, CompositeAudioClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, AudioFileClip, CompositeAudioClip, ColorClip
 import moviepy.video.fx.all as vfx
 import moviepy.audio.fx.all as afx
 import moviepy.config as mp_config
@@ -20,9 +20,18 @@ class Editor:
         if im_binary:
             mp_config.change_settings({"IMAGEMAGICK_BINARY": im_binary})
 
+    def _create_title_card(self, text: str, duration: float = 3.0, size: tuple = (1920, 1080)) -> CompositeVideoClip:
+        """Creates a title card with text on a black background."""
+        bg = ColorClip(size=size, color=(0, 0, 0), duration=duration)
+        txt = (TextClip(text, fontsize=70, color='white', method='caption', size=(size[0]*0.8, None))
+               .set_position('center')
+               .set_duration(duration))
+        return CompositeVideoClip([bg, txt])
+
     def edit(self, video_path: str, analysis_data: Dict[str, Any], graphic_paths: Dict[int, str], output_path: str = "output.mp4",
              music: Optional[str] = None, music_volume: float = 0.1, crossfade: float = 0.0,
-             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None) -> Optional[str]:
+             subtitle_config: Optional[Dict[str, Any]] = None, visual_filter: Optional[str] = None,
+             intro_text: Optional[str] = None, outro_text: Optional[str] = None) -> Optional[str]:
         """
         Edits the video based on the analysis data and generated graphics.
 
@@ -36,6 +45,8 @@ class Editor:
             crossfade (float): Duration of crossfade transition between clips.
             subtitle_config (Optional[Dict[str, Any]]): Configuration for subtitles (font, size, color, etc.).
             visual_filter (Optional[str]): Name of visual filter to apply (e.g., 'black_white').
+            intro_text (Optional[str]): Text for the intro title card.
+            outro_text (Optional[str]): Text for the outro title card.
 
         Returns:
             Optional[str]: The path to the output video, or None if editing fails.
@@ -65,6 +76,15 @@ class Editor:
             segments = [{"start": 0, "end": video.duration}]
         
         clips = []
+
+        # Intro
+        if intro_text:
+            print(f"Adding intro: {intro_text}")
+            try:
+                intro_clip = self._create_title_card(intro_text, size=video.size)
+                clips.append(intro_clip)
+            except Exception as e:
+                print(f"Error creating intro: {e}")
         
         # Sort segments by start time to ensure order
         segments.sort(key=lambda x: x["start"])
@@ -131,7 +151,12 @@ class Editor:
                                             .set_start(rel_start)
                                             .set_duration(duration)
                                             .set_position("center")
-                                            .resize(height=sub.h * 0.8)) # Resize to 80% of height
+                                            .resize(height=sub.h * 0.8)
+                                            .crossfadein(0.5)) # Fade in
+
+                                # Apply slow zoom (Ken Burns effect)
+                                img_clip = img_clip.resize(lambda t: 1 + 0.04 * t)
+
                                 layers.append(img_clip)
                             except Exception as e:
                                 print(f"Failed to create ImageClip: {e}")
@@ -169,6 +194,22 @@ class Editor:
                                          .set_start(rel_start)
                                          .set_duration(duration)
                                          .set_position(('center', 'bottom')))
+
+                            # Add background box
+                            if sub_conf.get("box_opacity", 0) > 0:
+                                # Estimate height. TextClip.h might not be accurate until rendered?
+                                # Actually text_clip.h is available.
+                                # But we want a consistent box or adaptive? Adaptive is fine.
+                                # Let's make a box that covers the bottom area or just behind text.
+                                # A full width bar is safer for readability.
+                                box_h = text_clip.h + 20
+                                box = (ColorClip(size=(sub.w, box_h), color=sub_conf.get("box_color", "black"))
+                                       .set_opacity(sub_conf.get("box_opacity", 0.5))
+                                       .set_position(('center', 'bottom'))
+                                       .set_start(rel_start)
+                                       .set_duration(duration))
+                                layers.append(box)
+
                             layers.append(text_clip)
                         except Exception as e:
                             print(f"Failed to create TextClip. This is often due to ImageMagick configuration.")
@@ -182,6 +223,15 @@ class Editor:
             else:
                 clips.append(sub)
 
+        # Outro
+        if outro_text:
+            print(f"Adding outro: {outro_text}")
+            try:
+                outro_clip = self._create_title_card(outro_text, size=video.size)
+                clips.append(outro_clip)
+            except Exception as e:
+                print(f"Error creating outro: {e}")
+
         # Concatenate
         if clips:
             print(f"Concatenating {len(clips)} clips...")
@@ -191,6 +241,7 @@ class Editor:
             if crossfade > 0 and len(clips) > 1:
                 print(f"Applying crossfade of {crossfade}s")
                 # Apply crossfadein to all clips except the first one
+                # Note: if intro exists, it is the first clip, so the first video segment will fade in from intro.
                 clips = [clip.crossfadein(crossfade) if i > 0 else clip for i, clip in enumerate(clips)]
                 padding = -crossfade
 
@@ -206,7 +257,14 @@ class Editor:
                         final = vfx.invert_colors(final)
                     elif visual_filter == 'painting':
                         final = vfx.painting(final)
-                    # Add more filters as needed
+                    elif visual_filter == 'rotate_90':
+                        final = vfx.rotate(final, 90)
+                    elif visual_filter == 'rotate_180':
+                        final = vfx.rotate(final, 180)
+                    elif visual_filter == 'mirror_x':
+                        final = vfx.mirror_x(final)
+                    elif visual_filter == 'mirror_y':
+                        final = vfx.mirror_y(final)
 
                 # Apply Background Music
                 if music and os.path.exists(music):
@@ -222,6 +280,9 @@ class Editor:
 
                         # Adjust volume
                         music_clip = music_clip.volumex(music_volume)
+
+                        # Add fade in/out
+                        music_clip = music_clip.audio_fadein(2.0).audio_fadeout(2.0)
 
                         # Mix
                         final_audio = CompositeAudioClip([final.audio, music_clip])

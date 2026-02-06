@@ -287,5 +287,87 @@ class TestComponents(unittest.TestCase):
             self.assertEqual(call_args[1]['font'], "Arial")
             self.assertEqual(call_args[1]['fontsize'], 50)
 
+    def test_editor_enhanced_features(self):
+        print("Testing Editor Enhanced Features (Mocked)...")
+
+        # Setup mocks BEFORE reload
+        mock_clip = MagicMock()
+        mock_clip.duration = 10.0
+        mock_clip.w = 100
+        mock_clip.h = 100
+        mock_clip.subclip.return_value = mock_clip
+        mock_clip.crossfadein.return_value = mock_clip
+        self.mock_moviepy_editor.VideoFileClip.return_value = mock_clip
+
+        mock_final = MagicMock()
+        mock_final.duration = 20.0 # Fix comparison error
+        self.mock_moviepy_editor.concatenate_videoclips.return_value = mock_final
+        mock_final.set_audio.return_value = mock_final
+
+        mock_audio = MagicMock()
+        mock_audio.duration = 30.0 # Fix comparison error
+        mock_audio.subclip.return_value = mock_audio  # Return self for chain calls
+        mock_audio.audio_fadein.return_value = mock_audio
+        mock_audio.audio_fadeout.return_value = mock_audio
+        mock_audio.volumex.return_value = mock_audio
+        self.mock_moviepy_editor.AudioFileClip.return_value = mock_audio
+
+        # Mock ColorClip for subtitle background and title cards
+        # Must be set on the mocked module before reload so it's imported correctly
+        mock_color_clip_cls = MagicMock()
+        self.mock_moviepy_editor.ColorClip = mock_color_clip_cls
+
+        import importlib
+        import src.editor
+        importlib.reload(src.editor)
+        from src.editor import Editor
+
+        # Manually align the module's imported vfx/afx with our global mocks
+        src.editor.vfx = sys.modules["moviepy.video.fx.all"]
+        src.editor.afx = sys.modules["moviepy.audio.fx.all"]
+
+        # Fix: Ensure vfx returns mock_final so duration is preserved
+        src.editor.vfx.rotate.return_value = mock_final
+
+        editor = Editor()
+        analysis_data = {
+            "segments": [{"start": 0, "end": 5}],
+            "captions": [{"start": 1, "end": 4, "text": "Sub"}],
+        }
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", analysis_data, {},
+                        music="music.mp3",
+                        subtitle_config={"box_opacity": 0.5},
+                        intro_text="Intro", outro_text="Outro",
+                        visual_filter="rotate_90")
+
+            # Check Intro/Outro created
+            # We expect ColorClip to be called at least 3 times: Intro bg, Outro bg, Subtitle bg
+            self.assertTrue(mock_color_clip_cls.call_count >= 3)
+
+            # Check Audio fade
+            mock_audio.audio_fadein.assert_called_with(2.0)
+            mock_audio.audio_fadeout.assert_called_with(2.0)
+
+            # Check Filter
+            src.editor.vfx.rotate.assert_called()
+
+        # Check Graphic Zoom/Fade
+        mock_img_clip = MagicMock()
+        mock_img_clip.set_start.return_value = mock_img_clip
+        mock_img_clip.set_duration.return_value = mock_img_clip
+        mock_img_clip.set_position.return_value = mock_img_clip
+        mock_img_clip.resize.return_value = mock_img_clip
+        mock_img_clip.crossfadein.return_value = mock_img_clip
+        self.mock_moviepy_editor.ImageClip.return_value = mock_img_clip
+
+        with patch('os.path.exists', return_value=True):
+            editor.edit("dummy.mp4", {"segments": [{"start":0, "end":5}], "graphics": [{"timestamp":1, "duration":2}]}, {0: "g.png"})
+
+            mock_img_clip.crossfadein.assert_called_with(0.5)
+            # Resize called twice: once for height, once for zoom
+            self.assertTrue(mock_img_clip.resize.call_count >= 2)
+
 if __name__ == '__main__':
     unittest.main()
